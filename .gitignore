@@ -1,0 +1,11 @@
+target
+
+dist
+*.swp
+
+generated
+
+.vscode
+
+examples/data
+examples/outputs
