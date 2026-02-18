@@ -1,5 +1,6 @@
 use drain3::TemplateMiner;
 use drain3::config::TemplateMinerConfig;
+use drain3::drain::LogCluster;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -84,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 
     let output_path = "examples/outputs/drain3_output.csv";
     let mut output_file = File::create(output_path)?;
-    writeln!(output_file, "template_id,template")?;
+    writeln!(output_file, "template_id,size,template")?;
 
     println!("Processing {}...", log_file_name);
 
@@ -107,15 +108,6 @@ fn main() -> anyhow::Result<()> {
 
         let (cluster, change_type) = miner.add_log_message(content);
         
-        if change_type != "none" {
-            writeln!(
-                output_file,
-                "{},\"{}\"",
-                cluster.cluster_id,
-                cluster.get_template().replace("\"", "\"\"")
-            )?;
-        }
-
         line_count += 1;
         if line_count % 10000 == 0 {
             let now = Instant::now();
@@ -145,6 +137,19 @@ fn main() -> anyhow::Result<()> {
         lines_per_sec, 
         miner.drain.id_to_cluster.len()
     );
+
+    let mut clusters: Vec<&LogCluster> = miner.drain.id_to_cluster.values().collect();
+    clusters.sort_by_key(|c| c.cluster_id);
+
+    for cluster in clusters {
+        writeln!(
+            output_file,
+                "{},{},\"{}\"",
+                cluster.cluster_id,
+                cluster.size,
+                cluster.get_template().replace("\"", "\"\"")
+            )?;
+    }
 
     Ok(())
 }

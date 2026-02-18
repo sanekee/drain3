@@ -1,6 +1,18 @@
-[SNAPSHOT]
-snapshot_interval_minutes = 10
-compress_state = true
+snapshot_interval_minutes = 30
+snapshot_compress_state = true
+
+mask_prefix = "<:"
+mask_suffix = ":>"
+
+engine = "Drain"
+drain_sim_th = 0.4
+drain_depth = 4
+drain_max_children = 100
+drain_max_clusters = 1024
+drain_extra_delimiters = ["_"]
+
+profiling_enabled = true
+profiling_report_sec = 30
 
 [[masking_instructions]]
 regex_pattern = "((?<=[^A-Za-z0-9])|^)(([0-9a-f]{2,}:){3,}([0-9a-f]{2,}))((?=[^A-Za-z0-9])|$)"
@@ -30,16 +42,7 @@ mask_with = "NUM"
 regex_pattern = "(?<=executed cmd )(\".+?\")"
 mask_with = "CMD"
 
+[[masking_instructions]]
+regex_pattern = "'.*'"
+mask_with = "STR"
 
-mask_prefix = "<"
-mask_suffix = ">"
-
-engine = "Drain"
-drain_sim_th = 0.4
-drain_depth = 4
-drain_max_children = 100
-drain_max_clusters = 1024
-drain_extra_delimiters = ["_"]
-
-profiling_enabled = true
-profiling_report_sec = 30
