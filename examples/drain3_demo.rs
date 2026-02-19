@@ -1,6 +1,6 @@
-use drain3::TemplateMiner;
 use drain3::config::TemplateMinerConfig;
 use drain3::drain::LogCluster;
+use drain3::TemplateMiner;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -30,13 +30,13 @@ fn main() -> anyhow::Result<()> {
                 .arg("--output")
                 .arg(compressed_file_name)
                 .status()?;
-            
+
             if !status.success() {
                 eprintln!("Failed to download file");
                 std::process::exit(1);
             }
         }
-        
+
         println!("Extracting {}...", compressed_file_name);
         let status = Command::new("tar")
             .arg("-xvzf")
@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
         if !status.success() {
             eprintln!("Failed to extract file. Deleting and retrying...");
             std::fs::remove_file(compressed_file_name)?;
-            
+
             // Retry download once
             println!("Downloading {}...", compressed_file_name);
             let status = Command::new("curl")
@@ -55,18 +55,18 @@ fn main() -> anyhow::Result<()> {
                 .arg("--output")
                 .arg(compressed_file_name)
                 .status()?;
-            
-             if !status.success() {
+
+            if !status.success() {
                 eprintln!("Failed to download file");
                 std::process::exit(1);
             }
-            
+
             println!("Extracting {}...", compressed_file_name);
             let status = Command::new("tar")
                 .arg("-xvzf")
                 .arg(compressed_file_name)
                 .status()?;
-                
+
             if !status.success() {
                 eprintln!("Failed to extract file after retry.");
                 std::process::exit(1);
@@ -95,7 +95,7 @@ fn main() -> anyhow::Result<()> {
         if line.is_empty() {
             continue;
         }
-        
+
         // Python demo strips header like "December 10 07:07:38 labszhu-5 " logic
         // We will just process the whole line for now or maybe strip known header?
         // The python demo does: line = line.partition(": ")[2]
@@ -107,7 +107,7 @@ fn main() -> anyhow::Result<()> {
         };
 
         let (cluster, change_type) = miner.add_log_message(content);
-        
+
         line_count += 1;
         if line_count % 10000 == 0 {
             let now = Instant::now();
@@ -132,9 +132,9 @@ fn main() -> anyhow::Result<()> {
 
     println!(
         "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, {} clusters", 
-        duration, 
-        line_count, 
-        lines_per_sec, 
+        duration,
+        line_count,
+        lines_per_sec,
         miner.drain.id_to_cluster.len()
     );
 
@@ -144,11 +144,11 @@ fn main() -> anyhow::Result<()> {
     for cluster in clusters {
         writeln!(
             output_file,
-                "{},{},\"{}\"",
-                cluster.cluster_id,
-                cluster.size,
-                cluster.get_template().replace("\"", "\"\"")
-            )?;
+            "{},{},\"{}\"",
+            cluster.cluster_id,
+            cluster.size,
+            cluster.get_template().replace("\"", "\"\"")
+        )?;
     }
 
     Ok(())

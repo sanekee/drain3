@@ -33,17 +33,39 @@ pub struct TemplateMinerConfig {
     pub profiling_report_sec: u64,
 }
 
-fn default_engine() -> String { "Drain".to_string() }
-fn default_drain_depth() -> usize { 4 }
-fn default_drain_sim_th() -> f64 { 0.4 }
-fn default_drain_max_children() -> usize { 100 }
-fn default_mask_prefix() -> String { "<".to_string() }
-fn default_mask_suffix() -> String { ">".to_string() }
-fn default_parametrize_numeric_tokens() -> bool { true }
-fn default_parameter_extraction_cache_capacity() -> usize { 3000 }
-fn default_snapshot_interval_minutes() -> u64 { 1 }
-fn default_snapshot_compress_state() -> bool { true }
-fn default_profiling_report_sec() -> u64 { 60 }
+fn default_engine() -> String {
+    "Drain".to_string()
+}
+fn default_drain_depth() -> usize {
+    4
+}
+fn default_drain_sim_th() -> f64 {
+    0.4
+}
+fn default_drain_max_children() -> usize {
+    100
+}
+fn default_mask_prefix() -> String {
+    "<".to_string()
+}
+fn default_mask_suffix() -> String {
+    ">".to_string()
+}
+fn default_parametrize_numeric_tokens() -> bool {
+    true
+}
+fn default_parameter_extraction_cache_capacity() -> usize {
+    3000
+}
+fn default_snapshot_interval_minutes() -> u64 {
+    1
+}
+fn default_snapshot_compress_state() -> bool {
+    true
+}
+fn default_profiling_report_sec() -> u64 {
+    60
+}
 
 impl Default for TemplateMinerConfig {
     fn default() -> Self {
@@ -80,4 +102,3 @@ pub struct MaskingInstruction {
     pub pattern: String,
     pub mask_with: String,
 }
-
