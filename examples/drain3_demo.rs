@@ -3,12 +3,32 @@ use drain3::config::TemplateMinerConfig;
 use drain3::FilePersistence;
 use drain3::TemplateMiner;
 use drain3::drain::LogCluster;
+use drain3::drain::UpdateType;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::time::Instant;
 
 mod sample_logs;
+
+struct SampleLine {
+    line: i32,
+    content: String,
+    update_type: UpdateType,
+}
+
+impl std::fmt::Display for SampleLine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "line: {}, type: {}, {}",
+            self.line, self.update_type, self.content,
+        )
+    }
+}
+
+type SampleLines = Vec<SampleLine>;
 
 fn main() -> anyhow::Result<()> {
     // Load config if exists
@@ -38,13 +58,16 @@ fn main() -> anyhow::Result<()> {
     let mut batch_start = start;
     let mut line_count = 0;
 
+    let mut sample_lines: HashMap<usize, SampleLines> = HashMap::new();
+
     let output_path = "examples/outputs/drain3_output.csv";
     let mut output_file = File::create(output_path)?;
-    writeln!(output_file, "template_id,size,template")?;
+    writeln!(output_file, "template_id,size,template,samples")?;
 
     println!("Processing {}...", &log_file_name);
 
     for line in reader.lines() {
+        let line_num = line_count + 1;
         let line = line?;
         let line = line.trim();
         if line.is_empty() {
@@ -57,7 +80,21 @@ fn main() -> anyhow::Result<()> {
             line
         };
 
-        miner.add_log_message(content);
+        let (cluster, update_type) = miner.add_log_message(content);
+
+        let entry = sample_lines
+            .entry(cluster.cluster_id)
+            .or_insert_with(Vec::new);
+
+        let exists = entry.iter().any(|sl| sl.update_type == update_type);
+
+        if !exists {
+            entry.push(SampleLine {
+                line: line_num,
+                content: content.to_string(),
+                update_type,
+            });
+        }
 
         line_count += 1;
         if line_count % 10000 == 0 {
@@ -93,12 +130,23 @@ fn main() -> anyhow::Result<()> {
     clusters.sort_by_key(|c| c.cluster_id);
 
     for cluster in clusters {
+        let samples = sample_lines.get(&cluster.cluster_id);
+        let sample_str = if let Some(lines) = samples {
+            lines
+                .iter()
+                .map(|sl| format!("{}", sl))
+                .collect::<Vec<_>>()
+                .join("; ")
+        } else {
+            String::new()
+        };
         writeln!(
             output_file,
-            "{},{},\"{}\"",
+            "{},{},\"{}\", \"{}\"",
             cluster.cluster_id,
             cluster.size,
-            cluster.get_template().replace("\"", "\"\"")
+            cluster.get_template().replace("\"", "\"\""),
+            sample_str.replace("\"", "\"\"")
         )?;
     }
 

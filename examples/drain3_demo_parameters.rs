@@ -106,7 +106,7 @@ fn main() -> anyhow::Result<()> {
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
             println!(
-                "Matching line: {}, rate {:.1} lines/sec, {} clusters so far.",
+                "Matching line: {}, rate {:.1} lines/sec, {} clusters.",
                 line_count,
                 batch_lines_sec,
                 miner.drain.id_to_cluster.len()

@@ -173,8 +173,6 @@ impl Drain {
         }
     }
 
-    // Associated functions (static-like) to avoid borrow checker issues with `self`
-
     fn tree_search(
         root_node: &Node,
         id_to_cluster: &HashMap<usize, LogCluster>,
