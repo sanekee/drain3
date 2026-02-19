@@ -63,13 +63,11 @@ impl TemplateMiner {
         let (cluster, change_type) = self.drain.add_log_message(&masked_content);
 
         let change_type_owned = change_type.clone();
-        if self.persistence_handler.is_some() {
-            if let Some(reason) = self.get_snapshot_reason(&change_type_owned) {
-                if let Err(e) = self.save_state(&reason) {
+        if self.persistence_handler.is_some()
+            && let Some(reason) = self.get_snapshot_reason(&change_type_owned)
+                && let Err(e) = self.save_state(&reason) {
                     eprintln!("Failed to save state: {}", e);
                 }
-            }
-        }
 
         (cluster, change_type)
     }
@@ -100,13 +98,12 @@ impl TemplateMiner {
     }
 
     fn load_state(&mut self) -> Result<()> {
-        if let Some(handler) = &mut self.persistence_handler {
-            if let Some(state) = handler.load_state()? {
+        if let Some(handler) = &mut self.persistence_handler
+            && let Some(state) = handler.load_state()? {
                 // Decompression logic would go here
                 let loaded_drain: Drain = serde_json::from_slice(&state)?;
                 self.drain = loaded_drain;
             }
-        }
         Ok(())
     }
 }

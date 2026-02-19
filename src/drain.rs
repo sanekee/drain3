@@ -40,6 +40,12 @@ pub struct Node {
     pub cluster_ids: Vec<usize>,
 }
 
+impl Default for Node {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Node {
     pub fn new() -> Self {
         Self {
@@ -94,7 +100,7 @@ impl Drain {
 
     // Helper to check if string has numbers
     fn has_numbers(s: &str) -> bool {
-        s.chars().any(|c| c.is_digit(10))
+        s.chars().any(|c| c.is_ascii_digit())
     }
 
     pub fn get_content_as_tokens(&self, content: &str) -> Vec<String> {
@@ -132,7 +138,7 @@ impl Drain {
                     update_type = "cluster_template_changed";
                 }
                 cluster.size += 1;
-                return (cluster.clone(), update_type.to_string());
+                (cluster.clone(), update_type.to_string())
             }
             None => {
                 self.clusters_counter += 1;
@@ -149,7 +155,7 @@ impl Drain {
                     self.parametrize_numeric_tokens,
                 );
 
-                return (cluster, "cluster_created".to_string());
+                (cluster, "cluster_created".to_string())
             }
         }
     }
@@ -303,7 +309,7 @@ impl Drain {
         let first_layer_node = root_node
             .key_to_child_node
             .entry(token_count_str)
-            .or_insert_with(Node::new);
+            .or_default();
 
         let mut cur_node = first_layer_node;
 
@@ -333,36 +339,32 @@ impl Drain {
                             .insert(param_str.to_string(), Node::new());
                     }
                     cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
-                } else {
-                    if cur_node.key_to_child_node.contains_key(param_str) {
-                        if cur_node.key_to_child_node.len() < max_children {
-                            cur_node
-                                .key_to_child_node
-                                .insert(token.clone(), Node::new());
-                            cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
-                        } else {
-                            cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
-                        }
+                } else if cur_node.key_to_child_node.contains_key(param_str) {
+                    if cur_node.key_to_child_node.len() < max_children {
+                        cur_node
+                            .key_to_child_node
+                            .insert(token.clone(), Node::new());
+                        cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
                     } else {
-                        if cur_node.key_to_child_node.len() + 1 < max_children {
-                            cur_node
-                                .key_to_child_node
-                                .insert(token.clone(), Node::new());
-                            cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
-                        } else if cur_node.key_to_child_node.len() + 1 == max_children {
-                            cur_node
-                                .key_to_child_node
-                                .insert(param_str.to_string(), Node::new());
-                            cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
-                        } else {
-                            if !cur_node.key_to_child_node.contains_key(param_str) {
-                                cur_node
-                                    .key_to_child_node
-                                    .insert(param_str.to_string(), Node::new());
-                            }
-                            cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
-                        }
+                        cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
                     }
+                } else if cur_node.key_to_child_node.len() + 1 < max_children {
+                    cur_node
+                        .key_to_child_node
+                        .insert(token.clone(), Node::new());
+                    cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
+                } else if cur_node.key_to_child_node.len() + 1 == max_children {
+                    cur_node
+                        .key_to_child_node
+                        .insert(param_str.to_string(), Node::new());
+                    cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
+                } else {
+                    if !cur_node.key_to_child_node.contains_key(param_str) {
+                        cur_node
+                            .key_to_child_node
+                            .insert(param_str.to_string(), Node::new());
+                    }
+                    cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
                 }
             }
 

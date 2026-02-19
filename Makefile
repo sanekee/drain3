@@ -12,5 +12,8 @@ clean:
 test:
 	cargo test
 
-run:
+run-demo:
 	cargo run --release --example drain3_demo
+
+lint:
+	cargo clippy
