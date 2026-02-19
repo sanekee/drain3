@@ -3,6 +3,7 @@ use drain3::config::TemplateMinerConfig;
 use drain3::FilePersistence;
 use drain3::TemplateMiner;
 use drain3::drain::LogCluster;
+use drain3::drain::SearchStrategy;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -22,6 +23,11 @@ fn main() -> anyhow::Result<()> {
         TemplateMinerConfig::default()
     };
 
+    if !Path::new(state_file).exists() {
+        println!("state file does not exist");
+        std::process::exit(1);
+    }
+
     let log_file_name = sample_logs::get_sample_logs().unwrap_or_else(|e| {
         println!("failed to get sample logs {}", e);
         std::process::exit(1);
@@ -29,7 +35,6 @@ fn main() -> anyhow::Result<()> {
 
     let persistence = FilePersistence::new(state_file.to_string());
     let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
-    // let mut miner = TemplateMiner::new(config, None);
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);
@@ -38,11 +43,11 @@ fn main() -> anyhow::Result<()> {
     let mut batch_start = start;
     let mut line_count = 0;
 
-    let output_path = "examples/outputs/drain3_output.csv";
+    let output_path = "examples/outputs/drain3_match_output.csv";
     let mut output_file = File::create(output_path)?;
     writeln!(output_file, "template_id,size,template")?;
 
-    println!("Processing {}...", &log_file_name);
+    println!("Matching {}...", &log_file_name);
 
     for line in reader.lines() {
         let line = line?;
@@ -57,7 +62,12 @@ fn main() -> anyhow::Result<()> {
             line
         };
 
-        miner.add_log_message(content);
+        let log_cluster = miner
+            .match_cluster(content, SearchStrategy::Fallback)
+            .or_else(|| {
+                println!("failed to match line {}: {}", line_count + 1, &content);
+                None
+            });
 
         line_count += 1;
         if line_count % 10000 == 0 {
@@ -65,7 +75,7 @@ fn main() -> anyhow::Result<()> {
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
             println!(
-                "Processing line: {}, rate {:.1} lines/sec, {} clusters so far.",
+                "Matching line: {}, rate {:.1} lines/sec, {} clusters so far.",
                 line_count,
                 batch_lines_sec,
                 miner.drain.id_to_cluster.len()
@@ -82,7 +92,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     println!(
-        "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, {} clusters",
+        "--- Done matching file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, {} clusters",
         duration,
         line_count,
         lines_per_sec,

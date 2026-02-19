@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::masking::MaskingInstructionConfig;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateMinerConfig {
     #[serde(default = "default_engine")]
@@ -22,7 +24,7 @@ pub struct TemplateMinerConfig {
     #[serde(default = "default_parameter_extraction_cache_capacity")]
     pub parameter_extraction_cache_capacity: usize,
     #[serde(default)]
-    pub masking_instructions: Vec<MaskingInstruction>,
+    pub masking_instructions: Vec<MaskingInstructionConfig>,
     #[serde(default = "default_snapshot_interval_minutes")]
     pub snapshot_interval_minutes: u64,
     #[serde(default = "default_snapshot_compress_state")]
@@ -94,11 +96,4 @@ impl TemplateMinerConfig {
         let content = std::fs::read_to_string(path).ok()?;
         toml::from_str(&content).ok()
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaskingInstruction {
-    #[serde(rename = "regex_pattern")]
-    pub pattern: String,
-    pub mask_with: String,
 }

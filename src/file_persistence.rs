@@ -1,7 +1,7 @@
 use crate::persistence::PersistenceHandler;
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use anyhow::Result;
 
 pub struct FilePersistence {
     pub file_path: String,

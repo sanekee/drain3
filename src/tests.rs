@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::drain::Drain;
+    use crate::drain::{Drain, UpdateType};
 
     #[test]
     fn test_drain_parsing() {
@@ -8,19 +8,19 @@ mod tests {
 
         let log1 = "Connected to 10.0.0.1";
         let (cluster1, type1) = drain.add_log_message(log1);
-        assert_eq!(type1, "cluster_created");
+        assert_eq!(type1, UpdateType::Created);
         assert_eq!(cluster1.cluster_id, 1);
         assert_eq!(cluster1.get_template(), "Connected to 10.0.0.1");
 
         let log2 = "Connected to 10.0.0.2";
         let (cluster2, type2) = drain.add_log_message(log2);
-        assert_eq!(type2, "cluster_template_changed");
+        assert_eq!(type2, UpdateType::Updated);
         assert_eq!(cluster2.cluster_id, 1);
         assert_eq!(cluster2.get_template(), "Connected to <*>");
 
         let log3 = "Disconnect from 10.0.0.1";
         let (cluster3, type3) = drain.add_log_message(log3);
-        assert_eq!(type3, "cluster_created");
+        assert_eq!(type3, UpdateType::Created);
         assert_eq!(cluster3.cluster_id, 2);
     }
 
@@ -46,15 +46,19 @@ mod tests {
     }
     #[test]
     fn test_masking() {
-        use crate::config::MaskingInstruction;
         use crate::masking::LogMasker;
+        use crate::masking::MaskingInstruction;
+        use crate::masking::MaskingInstructionConfig;
 
-        let instructions = vec![MaskingInstruction {
-            pattern: r"\d+".to_string(),
-            mask_with: "NUM".to_string(),
-        }];
+        let instructions: Vec<Box<dyn crate::masking::AbstractMaskingInstruction>> =
+            vec![Box::new(MaskingInstruction::new(
+                &MaskingInstructionConfig {
+                    pattern: r"\d+".to_string(),
+                    mask_with: "NUM".to_string(),
+                },
+            ))];
 
-        let masker = LogMasker::new(&instructions, "<", ">");
+        let masker = LogMasker::new(instructions, "<", ">");
         let masked = masker.mask("User 123 logged in");
         assert_eq!(masked, "User <NUM> logged in");
     }

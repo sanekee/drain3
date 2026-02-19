@@ -1,5 +1,18 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum_macros::Display;
+pub enum SearchStrategy {
+    Full,
+    Fast,
+    Fallback,
+}
+
+#[derive(Clone, Copy, Debug, Display, PartialEq, Eq)]
+pub enum UpdateType {
+    None,
+    Created,
+    Updated,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogCluster {
@@ -111,7 +124,7 @@ impl Drain {
         content.split_whitespace().map(|s| s.to_string()).collect()
     }
 
-    pub fn add_log_message(&mut self, content: &str) -> (LogCluster, String) {
+    pub fn add_log_message(&mut self, content: &str) -> (LogCluster, UpdateType) {
         let content_tokens = self.get_content_as_tokens(content);
 
         let match_result = Self::tree_search(
@@ -132,13 +145,13 @@ impl Drain {
                     &cluster.log_template_tokens,
                     &self.param_str,
                 );
-                let mut update_type = "none";
+                let mut update_type = UpdateType::None;
                 if new_template_tokens != cluster.log_template_tokens {
                     cluster.log_template_tokens = new_template_tokens;
-                    update_type = "cluster_template_changed";
+                    update_type = UpdateType::Updated;
                 }
                 cluster.size += 1;
-                (cluster.clone(), update_type.to_string())
+                (cluster.clone(), update_type)
             }
             None => {
                 self.clusters_counter += 1;
@@ -155,7 +168,7 @@ impl Drain {
                     self.parametrize_numeric_tokens,
                 );
 
-                (cluster, "cluster_created".to_string())
+                (cluster, UpdateType::Created)
             }
         }
     }
@@ -370,5 +383,73 @@ impl Drain {
 
             current_depth += 1;
         }
+    }
+
+    pub fn match_cluster(&self, content: &str, strategy: SearchStrategy) -> Option<LogCluster> {
+        let required_sim_th = 1.0;
+
+        let content_tokens = self.get_content_as_tokens(content);
+
+        let full_search = || {
+            let all_ids = self.get_clusters_ids_for_seq_len(content_tokens.len());
+
+            Self::fast_match(
+                &self.id_to_cluster,
+                &all_ids,
+                &content_tokens,
+                required_sim_th,
+                true,
+                &self.param_str,
+            )
+            .and_then(|id| self.id_to_cluster.get(&id).cloned())
+        };
+
+        match strategy {
+            SearchStrategy::Full => full_search(),
+
+            SearchStrategy::Fast => Self::tree_search(
+                &self.root_node,
+                &self.id_to_cluster,
+                &content_tokens,
+                required_sim_th,
+                true,
+                self.log_cluster_depth,
+                &self.param_str,
+            )
+            .and_then(|id| self.id_to_cluster.get(&id).cloned()),
+
+            SearchStrategy::Fallback => Self::tree_search(
+                &self.root_node,
+                &self.id_to_cluster,
+                &content_tokens,
+                required_sim_th,
+                true,
+                self.log_cluster_depth,
+                &self.param_str,
+            )
+            .and_then(|id| self.id_to_cluster.get(&id).cloned())
+            .or_else(full_search),
+        }
+    }
+
+    pub fn get_clusters_ids_for_seq_len(&self, seq_fir: impl ToString) -> Vec<usize> {
+        fn append_clusters_recursive(node: &Node, target: &mut Vec<usize>) {
+            target.extend(&node.cluster_ids);
+
+            for child in node.key_to_child_node.values() {
+                append_clusters_recursive(child, target);
+            }
+        }
+
+        let key = seq_fir.to_string();
+
+        let Some(cur_node) = self.root_node.key_to_child_node.get(&key) else {
+            return Vec::new();
+        };
+
+        let mut target = Vec::new();
+        append_clusters_recursive(cur_node, &mut target);
+
+        target
     }
 }

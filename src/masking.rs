@@ -1,34 +1,109 @@
-use crate::config::MaskingInstruction;
 use fancy_regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+pub trait AbstractMaskingInstruction {
+    fn mask_with(&self) -> &str;
+    fn mask(&self, content: &str, mask_prefix: &str, mask_suffix: &str) -> String;
+    fn pattern(&self) -> &str;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaskingInstructionConfig {
+    #[serde(rename = "regex_pattern")]
+    pub pattern: String,
+    pub mask_with: String,
+}
+
+#[derive(Clone)]
+pub struct MaskingInstruction {
+    pub pattern: String,
+    pub mask_with: String,
+    pub regex: Regex,
+}
+
+impl MaskingInstruction {
+    pub fn new(config: &MaskingInstructionConfig) -> Self {
+        Self {
+            pattern: config.pattern.to_string(),
+            mask_with: config.mask_with.to_string(),
+            regex: Regex::new(config.pattern.as_str()).unwrap(),
+        }
+    }
+}
+
+impl AbstractMaskingInstruction for MaskingInstruction {
+    fn mask_with(&self) -> &str {
+        &self.mask_with
+    }
+
+    fn mask(&self, content: &str, mask_prefix: &str, mask_suffix: &str) -> String {
+        let replacement = format!("{}{}{}", mask_prefix, self.mask_with, mask_suffix);
+        self.regex
+            .replace_all(content, replacement.as_str())
+            .to_string()
+    }
+
+    fn pattern(&self) -> &str {
+        &self.pattern
+    }
+}
+
+pub type RegexMaskingInstruction = MaskingInstruction;
 
 pub struct LogMasker {
-    instructions: Vec<(Regex, String)>,
-    mask_prefix: String,
-    mask_suffix: String,
+    instructions: Vec<Box<dyn AbstractMaskingInstruction>>,
+    pub mask_prefix: String,
+    pub mask_suffix: String,
+    mask_name_to_instructions: HashMap<String, Vec<usize>>, // indexes into `instructions`
 }
 
 impl LogMasker {
-    pub fn new(instructions: &[MaskingInstruction], mask_prefix: &str, mask_suffix: &str) -> Self {
-        let compiled_instructions = instructions
-            .iter()
-            .map(|i| (Regex::new(&i.pattern).unwrap(), i.mask_with.clone()))
-            .collect();
+    pub fn new(
+        instructions: Vec<Box<dyn AbstractMaskingInstruction>>,
+        mask_prefix: &str,
+        mask_suffix: &str,
+    ) -> Self {
+        let mut mask_name_to_instructions: HashMap<String, Vec<usize>> = HashMap::new();
+
+        for (i, mi) in instructions.iter().enumerate() {
+            mask_name_to_instructions
+                .entry(mi.mask_with().to_string())
+                .or_default()
+                .push(i);
+        }
 
         Self {
-            instructions: compiled_instructions,
+            instructions,
             mask_prefix: mask_prefix.to_string(),
             mask_suffix: mask_suffix.to_string(),
+            mask_name_to_instructions,
         }
     }
 
     pub fn mask(&self, content: &str) -> String {
-        let mut masked_content = content.to_string();
-        for (regex, mask_with) in &self.instructions {
-            let replacement = format!("{}{}{}", self.mask_prefix, mask_with, self.mask_suffix);
-            masked_content = regex
-                .replace_all(&masked_content, replacement.as_str())
-                .to_string();
+        let mut masked = content.to_string();
+        for mi in &self.instructions {
+            masked = mi.mask(&masked, &self.mask_prefix, &self.mask_suffix);
         }
-        masked_content
+        masked
+    }
+
+    pub fn mask_names(&self) -> Vec<String> {
+        self.mask_name_to_instructions.keys().cloned().collect()
+    }
+
+    pub fn instructions_by_mask_name(
+        &self,
+        mask_name: &str,
+    ) -> Vec<&dyn AbstractMaskingInstruction> {
+        if let Some(indices) = self.mask_name_to_instructions.get(mask_name) {
+            indices
+                .iter()
+                .map(|&i| self.instructions[i].as_ref())
+                .collect()
+        } else {
+            vec![]
+        }
     }
 }
