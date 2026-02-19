@@ -1,4 +1,6 @@
 use drain3::config::TemplateMinerConfig;
+
+use drain3::FilePersistence;
 use drain3::drain::LogCluster;
 use drain3::TemplateMiner;
 use std::fs::File;
@@ -10,6 +12,7 @@ use std::time::Instant;
 fn main() -> anyhow::Result<()> {
     // Load config if exists
     // Load config from examples directory since we run from crate root
+    let state_file = "examples/outputs/drain3.states";
     let config_path = "examples/drain3.toml";
     let config = if Path::new(config_path).exists() {
         TemplateMinerConfig::load(config_path).unwrap_or_default()
@@ -74,6 +77,8 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    // let persistence = FilePersistence::new(state_file.to_string());
+    // let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
     let mut miner = TemplateMiner::new(config, None);
 
     let file = File::open(log_file_name)?;
@@ -106,7 +111,7 @@ fn main() -> anyhow::Result<()> {
             line
         };
 
-        let (cluster, change_type) = miner.add_log_message(content);
+        miner.add_log_message(content);
 
         line_count += 1;
         if line_count % 10000 == 0 {
