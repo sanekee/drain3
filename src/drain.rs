@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+};
 use strum_macros::Display;
 pub enum SearchStrategy {
     Full,
@@ -132,7 +135,7 @@ impl Drain {
             &self.id_to_cluster,
             &content_tokens,
             self.sim_th,
-            false,
+            true,
             self.log_cluster_depth,
             &self.param_str,
         );
@@ -449,5 +452,51 @@ impl Drain {
         append_clusters_recursive(cur_node, &mut target);
 
         target
+    }
+
+    pub fn print_tree<W: Write>(&self, writer: &mut W, max_clusters: usize) -> io::Result<()> {
+        self.print_node("root", &self.root_node, 0, writer, max_clusters)
+    }
+
+    fn print_node<W: Write>(
+        &self,
+        token: &str,
+        node: &Node,
+        depth: usize,
+        writer: &mut W,
+        max_clusters: usize,
+    ) -> io::Result<()> {
+        let mut out_str = "\t".repeat(depth);
+
+        if depth == 0 {
+            out_str += &format!("<{}>", token);
+        } else if depth == 1 {
+            if token.chars().all(|c| c.is_ascii_digit()) {
+                out_str += &format!("<L={}>", token);
+            } else {
+                out_str += &format!("<{}>", token);
+            }
+        } else {
+            out_str += &format!("\"{}\"", token);
+        }
+
+        if !node.cluster_ids.is_empty() {
+            out_str += &format!(" (cluster_count={})", node.cluster_ids.len());
+        }
+
+        writeln!(writer, "{}", out_str)?;
+
+        for (child_token, child_node) in &node.key_to_child_node {
+            self.print_node(child_token, child_node, depth + 1, writer, max_clusters)?;
+        }
+
+        for cid in node.cluster_ids.iter().take(max_clusters) {
+            if let Some(cluster) = self.id_to_cluster.get(cid) {
+                let cluster_str = format!("{}\t{}", "\t".repeat(depth + 1), cluster);
+                writeln!(writer, "{}", cluster_str)?;
+            }
+        }
+
+        Ok(())
     }
 }

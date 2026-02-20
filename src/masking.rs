@@ -24,10 +24,16 @@ pub struct MaskingInstruction {
 
 impl MaskingInstruction {
     pub fn new(config: &MaskingInstructionConfig) -> Self {
+        let re = match Regex::new(config.pattern.as_str()) {
+            Ok(x) => x,
+            Err(e) => {
+                panic!("failed to compile regex {}, {}", config.pattern, e);
+            }
+        };
         Self {
             pattern: config.pattern.to_string(),
             mask_with: config.mask_with.to_string(),
-            regex: Regex::new(config.pattern.as_str()).unwrap(),
+            regex: re,
         }
     }
 }

@@ -27,12 +27,6 @@ pub struct TemplateMinerConfig {
     pub masking_instructions: Vec<MaskingInstructionConfig>,
     #[serde(default = "default_snapshot_interval_minutes")]
     pub snapshot_interval_minutes: u64,
-    #[serde(default = "default_snapshot_compress_state")]
-    pub snapshot_compress_state: bool,
-    #[serde(default)]
-    pub profiling_enabled: bool,
-    #[serde(default = "default_profiling_report_sec")]
-    pub profiling_report_sec: u64,
 }
 
 fn default_engine() -> String {
@@ -62,12 +56,6 @@ fn default_parameter_extraction_cache_capacity() -> usize {
 fn default_snapshot_interval_minutes() -> u64 {
     1
 }
-fn default_snapshot_compress_state() -> bool {
-    true
-}
-fn default_profiling_report_sec() -> u64 {
-    60
-}
 
 impl Default for TemplateMinerConfig {
     fn default() -> Self {
@@ -84,9 +72,6 @@ impl Default for TemplateMinerConfig {
             parameter_extraction_cache_capacity: default_parameter_extraction_cache_capacity(),
             masking_instructions: vec![],
             snapshot_interval_minutes: default_snapshot_interval_minutes(),
-            snapshot_compress_state: default_snapshot_compress_state(),
-            profiling_enabled: false,
-            profiling_report_sec: default_profiling_report_sec(),
         }
     }
 }

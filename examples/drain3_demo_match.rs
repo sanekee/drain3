@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     let persistence = FilePersistence::new(state_file.to_string());
-    let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
+    let mut miner = TemplateMiner::new(&config, Some(Box::new(persistence)));
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);

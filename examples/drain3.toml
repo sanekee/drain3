@@ -5,14 +5,11 @@ mask_prefix = "<:"
 mask_suffix = ":>"
 
 engine = "Drain"
-drain_sim_th = 0.4
-drain_depth = 4
+drain_sim_th = 0.5
+drain_depth = 5
 drain_max_children = 100
 drain_max_clusters = 1024
 drain_extra_delimiters = ["_"]
-
-profiling_enabled = true
-profiling_report_sec = 30
 
 [[masking_instructions]]
 regex_pattern = "((?<=[^A-Za-z0-9])|^)(([0-9a-f]{2,}:){3,}([0-9a-f]{2,}))((?=[^A-Za-z0-9])|$)"
@@ -46,3 +43,6 @@ mask_with = "CMD"
 regex_pattern = "'.*'"
 mask_with = "STR"
 
+[[masking_instructions]]
+regex_pattern = "\".*\""
+mask_with = "STR"

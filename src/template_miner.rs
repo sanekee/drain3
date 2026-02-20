@@ -20,17 +20,17 @@ impl ExtractedParameter {
     }
 }
 
-pub struct TemplateMiner {
-    pub config: TemplateMinerConfig,
+pub struct TemplateMiner<'a> {
+    pub config: &'a TemplateMinerConfig,
     pub drain: Drain,
     pub masker: LogMasker,
     persistence_handler: Option<Box<dyn PersistenceHandler>>,
     last_save_time: u64,
 }
 
-impl TemplateMiner {
+impl<'a> TemplateMiner<'a> {
     pub fn new(
-        config: TemplateMinerConfig,
+        config: &'a TemplateMinerConfig,
         persistence_handler: Option<Box<dyn PersistenceHandler>>,
     ) -> Self {
         let param_str = format!("{}*{}", config.mask_prefix, config.mask_suffix);

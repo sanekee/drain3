@@ -6,6 +6,7 @@ use drain3::drain::LogCluster;
 use drain3::drain::UpdateType;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -47,9 +48,9 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     });
 
-    let persistence = FilePersistence::new(state_file.to_string());
-    let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
-    // let mut miner = TemplateMiner::new(config, None);
+    // let persistence = FilePersistence::new(state_file.to_string());
+    // let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
+    let mut miner = TemplateMiner::new(&config, None);
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);
@@ -98,6 +99,7 @@ fn main() -> anyhow::Result<()> {
 
         line_count += 1;
         if line_count % 10000 == 0 {
+            break;
             let now = Instant::now();
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
@@ -125,6 +127,13 @@ fn main() -> anyhow::Result<()> {
         lines_per_sec,
         miner.drain.id_to_cluster.len()
     );
+
+    println!("Prefix tree:");
+    let mut stdout = io::stdout().lock();
+    miner
+        .drain
+        .print_tree(&mut stdout, config.drain_max_clusters.unwrap_or_default())
+        .unwrap();
 
     let mut clusters: Vec<&LogCluster> = miner.drain.id_to_cluster.values().collect();
     clusters.sort_by_key(|c| c.cluster_id);
