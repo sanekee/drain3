@@ -88,7 +88,10 @@ fn main() -> anyhow::Result<()> {
         let mut parameters_str = String::new();
         let mut comma = "";
         parameters.iter().for_each(|f| {
-            parameters_str += &format!("{}: {}{}", &f.mask_name, &f.value, comma);
+            parameters_str += &format!(
+                "{}{}{} = {}{}",
+                config.mask_prefix, &f.mask_name, config.mask_suffix, &f.value, comma
+            );
             comma = ","
         });
 
@@ -102,6 +105,7 @@ fn main() -> anyhow::Result<()> {
 
         line_count += 1;
         if line_count % 10000 == 0 {
+            break;
             let now = Instant::now();
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();

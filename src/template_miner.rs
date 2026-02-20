@@ -26,6 +26,7 @@ pub struct TemplateMiner<'a> {
     pub masker: LogMasker,
     persistence_handler: Option<Box<dyn PersistenceHandler>>,
     last_save_time: u64,
+    state_dirty: bool,
 }
 
 impl<'a> TemplateMiner<'a> {
@@ -65,6 +66,7 @@ impl<'a> TemplateMiner<'a> {
             masker,
             persistence_handler,
             last_save_time: Self::current_time_sec(),
+            state_dirty: false,
         };
 
         if let Err(e) = miner.load_state() {
@@ -85,9 +87,10 @@ impl<'a> TemplateMiner<'a> {
         let masked_content = self.masker.mask(log_message);
         let (cluster, change_type) = self.drain.add_log_message(&masked_content);
 
+        self.state_dirty = self.state_dirty || change_type != UpdateType::None;
         if self.persistence_handler.is_some()
-            && let Some(reason) = self.get_snapshot_reason(change_type)
-            && let Err(e) = self.save_state(&reason)
+            && self.should_save_state()
+            && let Err(e) = self.save_state()
         {
             eprintln!("Failed to save state: {}", e);
         }
@@ -100,24 +103,14 @@ impl<'a> TemplateMiner<'a> {
         self.drain.match_cluster(masked_content.as_str(), strategy)
     }
 
-    fn get_snapshot_reason(&self, update_type: UpdateType) -> Option<String> {
-        match update_type {
-            UpdateType::None => {
-                let diff_time = Self::current_time_sec() - self.last_save_time;
-                if diff_time >= self.config.snapshot_interval_minutes * 60 {
-                    return Some("periodic".to_string());
-                }
-                None
-            }
-            _ => Some(format!("{} (cluster_id=?)", update_type)),
-        }
+    fn should_save_state(&self) -> bool {
+        Self::current_time_sec() - self.last_save_time >= self.config.snapshot_interval_minutes * 60
+            && self.state_dirty
     }
 
-    fn save_state(&mut self, _snapshot_reason: &str) -> Result<()> {
+    fn save_state(&mut self) -> Result<()> {
         if let Some(handler) = &mut self.persistence_handler {
-            // We only save the Drain state, not configuration or masking which are static/init-time
             let state = serde_json::to_vec(&self.drain)?;
-            // Compression logic would go here if enabled
             handler.save_state(&state)?;
             self.last_save_time = Self::current_time_sec();
         }

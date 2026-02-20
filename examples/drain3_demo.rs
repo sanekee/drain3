@@ -48,9 +48,9 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     });
 
-    // let persistence = FilePersistence::new(state_file.to_string());
-    // let mut miner = TemplateMiner::new(config, Some(Box::new(persistence)));
-    let mut miner = TemplateMiner::new(&config, None);
+    let persistence = FilePersistence::new(state_file.to_string());
+    let mut miner = TemplateMiner::new(&config, Some(Box::new(persistence)));
+    // let mut miner = TemplateMiner::new(&config, None);
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);
