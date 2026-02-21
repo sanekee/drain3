@@ -1,5 +1,6 @@
+use crate::cluster::{LogCluster, SearchStrategy, UpdateType};
 use crate::config::TemplateMinerConfig;
-use crate::drain::{Drain, LogCluster, SearchStrategy, UpdateType};
+use crate::drain::Drain;
 use crate::masking::{AbstractMaskingInstruction, LogMasker, MaskingInstruction};
 use crate::persistence::PersistenceHandler;
 use anyhow::Result;
@@ -34,16 +35,16 @@ impl<'a> TemplateMiner<'a> {
         config: &'a TemplateMinerConfig,
         persistence_handler: Option<Box<dyn PersistenceHandler>>,
     ) -> Self {
-        let param_str = format!("{}*{}", config.mask_prefix, config.mask_suffix);
-
         let drain = Drain::new(
             config.drain_depth,
             config.drain_sim_th,
             config.drain_max_children,
             config.drain_max_clusters,
             config.drain_extra_delimiters.clone(),
-            param_str,
             config.parametrize_numeric_tokens,
+            &config.token_template,
+            &config.mask_prefix,
+            &config.mask_suffix,
         );
 
         let masking_instructions = config

@@ -27,32 +27,46 @@ pub struct TemplateMinerConfig {
     pub masking_instructions: Vec<MaskingInstructionConfig>,
     #[serde(default = "default_snapshot_interval_minutes")]
     pub snapshot_interval_minutes: u64,
+    #[serde(default = "default_token_template")]
+    pub token_template: String,
 }
 
 fn default_engine() -> String {
     "Drain".to_string()
 }
+
 fn default_drain_depth() -> usize {
     4
 }
+
 fn default_drain_sim_th() -> f64 {
     0.4
 }
+
 fn default_drain_max_children() -> usize {
     100
 }
+
 fn default_mask_prefix() -> String {
     "<".to_string()
 }
+
 fn default_mask_suffix() -> String {
     ">".to_string()
 }
+
+fn default_token_template() -> String {
+    "TOKEN".to_string()
+}
+
 fn default_parametrize_numeric_tokens() -> bool {
     true
 }
+
 fn default_parameter_extraction_cache_capacity() -> usize {
     3000
 }
+
 fn default_snapshot_interval_minutes() -> u64 {
     1
 }
@@ -68,6 +82,7 @@ impl Default for TemplateMinerConfig {
             drain_extra_delimiters: vec![],
             mask_prefix: default_mask_prefix(),
             mask_suffix: default_mask_suffix(),
+            token_template: default_token_template(),
             parametrize_numeric_tokens: default_parametrize_numeric_tokens(),
             parameter_extraction_cache_capacity: default_parameter_extraction_cache_capacity(),
             masking_instructions: vec![],

@@ -3,73 +3,8 @@ use std::{
     collections::HashMap,
     io::{self, Write},
 };
-use strum_macros::Display;
-pub enum SearchStrategy {
-    Full,
-    Fast,
-    Fallback,
-}
 
-#[derive(Clone, Copy, Debug, Display, PartialEq, Eq)]
-pub enum UpdateType {
-    None,
-    Created,
-    Updated,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogCluster {
-    pub log_template_tokens: Vec<String>,
-    pub cluster_id: usize,
-    pub size: usize,
-}
-
-impl LogCluster {
-    pub fn new(log_template_tokens: Vec<String>, cluster_id: usize) -> Self {
-        Self {
-            log_template_tokens,
-            cluster_id,
-            size: 1,
-        }
-    }
-
-    pub fn get_template(&self) -> String {
-        self.log_template_tokens.join(" ")
-    }
-}
-
-impl std::fmt::Display for LogCluster {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ID={:<5} : size={:<10}: {}",
-            self.cluster_id,
-            self.size,
-            self.get_template()
-        )
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Node {
-    pub key_to_child_node: HashMap<String, Node>,
-    pub cluster_ids: Vec<usize>,
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Node {
-    pub fn new() -> Self {
-        Self {
-            key_to_child_node: HashMap::new(),
-            cluster_ids: Vec::new(),
-        }
-    }
-}
+use crate::cluster::{LogCluster, Node, SearchStrategy, UpdateType};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Drain {
@@ -78,12 +13,22 @@ pub struct Drain {
     pub max_children: usize,
     pub max_clusters: Option<usize>,
     pub extra_delimiters: Vec<String>,
-    pub param_str: String,
     pub parametrize_numeric_tokens: bool,
 
     pub root_node: Node,
     pub id_to_cluster: HashMap<usize, LogCluster>, // TODO: implement LRU if max_clusters is set
     pub clusters_counter: usize,
+
+    #[serde(skip)]
+    token_prefix: String,
+    #[serde(skip)]
+    token_suffix: String,
+    #[serde(skip)]
+    token_template: String,
+    #[serde(skip)]
+    token_template_counter: usize,
+    #[serde(skip)]
+    token_template_check: String,
 }
 
 impl Drain {
@@ -93,12 +38,21 @@ impl Drain {
         max_children: usize,
         max_clusters: Option<usize>,
         extra_delimiters: Vec<String>,
-        param_str: String,
         parametrize_numeric_tokens: bool,
+        token_template: &str,
+        token_prefix: &str,
+        token_suffix: &str,
     ) -> Self {
         if depth < 3 {
             panic!("depth argument must be at least 3");
         }
+
+        let token_template = token_template
+            .is_empty()
+            .then(|| "TOKEN")
+            .unwrap_or(token_template);
+
+        let token_template_check = format!("{}{}", token_prefix, token_template);
 
         Self {
             log_cluster_depth: depth,
@@ -106,11 +60,15 @@ impl Drain {
             max_children,
             max_clusters,
             extra_delimiters,
-            param_str,
             parametrize_numeric_tokens,
             root_node: Node::new(),
             id_to_cluster: HashMap::new(),
             clusters_counter: 0,
+            token_template: token_template.to_string(),
+            token_template_counter: 0,
+            token_prefix: token_prefix.to_string(),
+            token_suffix: token_suffix.to_string(),
+            token_template_check: token_template_check,
         }
     }
 
@@ -137,23 +95,27 @@ impl Drain {
             self.sim_th,
             true,
             self.log_cluster_depth,
-            &self.param_str,
+            &self.token_template,
         );
 
         match match_result {
             Some(cluster_id) => {
+                let mut counter = self.token_template_counter;
                 let cluster = self.id_to_cluster.get_mut(&cluster_id).unwrap();
-                let new_template_tokens = Self::create_template(
+                let update_type = cluster.update_template(
                     &content_tokens,
-                    &cluster.log_template_tokens,
-                    &self.param_str,
+                    |t| -> bool { Self::is_token(&self.token_template_check, t) },
+                    || {
+                        counter += 1;
+                        format!(
+                            "{}{}{}{}",
+                            self.token_prefix, self.token_template, counter, self.token_suffix
+                        )
+                    },
                 );
-                let mut update_type = UpdateType::None;
-                if new_template_tokens != cluster.log_template_tokens {
-                    cluster.log_template_tokens = new_template_tokens;
-                    update_type = UpdateType::Updated;
-                }
-                cluster.size += 1;
+
+                self.token_template_counter = counter;
+
                 (cluster.clone(), update_type)
             }
             None => {
@@ -167,7 +129,6 @@ impl Drain {
                     &cluster,
                     self.log_cluster_depth,
                     self.max_children,
-                    &self.param_str,
                     self.parametrize_numeric_tokens,
                 );
 
@@ -183,15 +144,15 @@ impl Drain {
         sim_th: f64,
         include_params: bool,
         log_cluster_depth: usize,
-        param_str: &str,
+        token_template: &String,
     ) -> Option<usize> {
         let token_count = tokens.len();
 
         // At first level, children are grouped by token count
-        let cur_node = root_node.key_to_child_node.get(&token_count.to_string())?;
+        let cur_node = root_node.get(&token_count.to_string())?;
 
         if token_count == 0 {
-            return cur_node.cluster_ids.first().copied();
+            return cur_node.first_cluster_id();
         }
 
         let mut cur_node = cur_node;
@@ -206,9 +167,7 @@ impl Drain {
                 break;
             }
 
-            if let Some(node) = cur_node.key_to_child_node.get(token) {
-                cur_node = node;
-            } else if let Some(node) = cur_node.key_to_child_node.get(param_str) {
+            if let Some(node) = cur_node.find_next(token) {
                 cur_node = node;
             } else {
                 return None;
@@ -222,7 +181,7 @@ impl Drain {
             tokens,
             sim_th,
             include_params,
-            param_str,
+            token_template,
         )
     }
 
@@ -232,7 +191,7 @@ impl Drain {
         tokens: &[String],
         sim_th: f64,
         include_params: bool,
-        param_str: &str,
+        token_template: &String,
     ) -> Option<usize> {
         let mut max_sim = -1.0;
         let mut max_param_count = -1;
@@ -243,8 +202,8 @@ impl Drain {
                 let (cur_sim, param_count) = Self::get_seq_distance(
                     &cluster.log_template_tokens,
                     tokens,
+                    token_template,
                     include_params,
-                    param_str,
                 );
                 if cur_sim > max_sim || (cur_sim == max_sim && param_count > max_param_count) {
                     max_sim = cur_sim;
@@ -264,8 +223,8 @@ impl Drain {
     fn get_seq_distance(
         seq1: &[String],
         seq2: &[String],
+        token_template: &String,
         include_params: bool,
-        param_str: &str,
     ) -> (f64, i32) {
         if seq1.len() != seq2.len() {
             return (0.0, 0);
@@ -279,7 +238,7 @@ impl Drain {
         let mut param_count = 0;
 
         for (token1, token2) in seq1.iter().zip(seq2.iter()) {
-            if token1 == param_str {
+            if Self::is_token(token_template, token1) {
                 param_count += 1;
                 continue;
             }
@@ -296,17 +255,29 @@ impl Drain {
         (ret_val, param_count)
     }
 
-    fn create_template(seq1: &[String], seq2: &[String], param_str: &str) -> Vec<String> {
+    fn is_token(template: &String, token: &String) -> bool {
+        token.starts_with(template)
+    }
+
+    fn create_template(&mut self, seq1: &[String], seq2: &[String]) -> Vec<String> {
         seq1.iter()
             .zip(seq2.iter())
             .map(|(t1, t2)| {
                 if t1 == t2 {
                     t2.clone()
                 } else {
-                    param_str.to_string()
+                    self.get_next_token()
                 }
             })
             .collect()
+    }
+
+    fn get_next_token(&mut self) -> String {
+        self.token_template_counter += 1;
+        format!(
+            "{}{}{}{}",
+            self.token_prefix, self.token_template, self.token_template_counter, self.token_suffix
+        )
     }
 
     fn add_seq_to_prefix_tree(
@@ -314,16 +285,12 @@ impl Drain {
         cluster: &LogCluster,
         log_cluster_depth: usize,
         max_children: usize,
-        param_str: &str,
         parametrize_numeric_tokens: bool,
     ) {
         let token_count = cluster.log_template_tokens.len();
         let token_count_str = token_count.to_string();
 
-        let first_layer_node = root_node
-            .key_to_child_node
-            .entry(token_count_str)
-            .or_default();
+        let first_layer_node = root_node.get_or_insert(&token_count_str);
 
         let mut cur_node = first_layer_node;
 
@@ -341,47 +308,27 @@ impl Drain {
                 break;
             }
 
-            // logic to choose next node
-            if cur_node.key_to_child_node.contains_key(token) {
-                cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
+            if cur_node.has_child(token) {
+                cur_node = cur_node.get_child_mut(token).unwrap();
             } else {
                 let has_numbers = parametrize_numeric_tokens && Self::has_numbers(token);
+
                 if has_numbers {
-                    if !cur_node.key_to_child_node.contains_key(param_str) {
-                        cur_node
-                            .key_to_child_node
-                            .insert(param_str.to_string(), Node::new());
-                    }
-                    cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
-                } else if cur_node.key_to_child_node.contains_key(param_str) {
-                    if cur_node.key_to_child_node.len() < max_children {
-                        cur_node
-                            .key_to_child_node
-                            .insert(token.clone(), Node::new());
-                        cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
+                    cur_node = cur_node.get_or_insert_param();
+                } else if cur_node.has_param() {
+                    if cur_node.child_count() < max_children {
+                        cur_node = cur_node.get_or_insert_child(token);
                     } else {
-                        cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
+                        cur_node = cur_node.get_param_mut().unwrap();
                     }
-                } else if cur_node.key_to_child_node.len() + 1 < max_children {
-                    cur_node
-                        .key_to_child_node
-                        .insert(token.clone(), Node::new());
-                    cur_node = cur_node.key_to_child_node.get_mut(token).unwrap();
-                } else if cur_node.key_to_child_node.len() + 1 == max_children {
-                    cur_node
-                        .key_to_child_node
-                        .insert(param_str.to_string(), Node::new());
-                    cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
+                } else if cur_node.child_count() + 1 < max_children {
+                    cur_node = cur_node.get_or_insert_child(token);
+                } else if cur_node.child_count() + 1 == max_children {
+                    cur_node = cur_node.get_or_insert_param();
                 } else {
-                    if !cur_node.key_to_child_node.contains_key(param_str) {
-                        cur_node
-                            .key_to_child_node
-                            .insert(param_str.to_string(), Node::new());
-                    }
-                    cur_node = cur_node.key_to_child_node.get_mut(param_str).unwrap();
+                    cur_node = cur_node.get_or_insert_param();
                 }
             }
-
             current_depth += 1;
         }
     }
@@ -400,7 +347,7 @@ impl Drain {
                 &content_tokens,
                 required_sim_th,
                 true,
-                &self.param_str,
+                &self.token_template_check,
             )
             .and_then(|id| self.id_to_cluster.get(&id).cloned())
         };
@@ -415,7 +362,7 @@ impl Drain {
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.param_str,
+                &self.token_template,
             )
             .and_then(|id| self.id_to_cluster.get(&id).cloned()),
 
@@ -426,7 +373,7 @@ impl Drain {
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.param_str,
+                &self.token_template,
             )
             .and_then(|id| self.id_to_cluster.get(&id).cloned())
             .or_else(full_search),
@@ -437,14 +384,14 @@ impl Drain {
         fn append_clusters_recursive(node: &Node, target: &mut Vec<usize>) {
             target.extend(&node.cluster_ids);
 
-            for child in node.key_to_child_node.values() {
+            for child in node.children() {
                 append_clusters_recursive(child, target);
             }
         }
 
         let key = seq_fir.to_string();
 
-        let Some(cur_node) = self.root_node.key_to_child_node.get(&key) else {
+        let Some(cur_node) = self.root_node.get(&key) else {
             return Vec::new();
         };
 
@@ -455,48 +402,8 @@ impl Drain {
     }
 
     pub fn print_tree<W: Write>(&self, writer: &mut W, max_clusters: usize) -> io::Result<()> {
-        self.print_node("root", &self.root_node, 0, writer, max_clusters)
-    }
-
-    fn print_node<W: Write>(
-        &self,
-        token: &str,
-        node: &Node,
-        depth: usize,
-        writer: &mut W,
-        max_clusters: usize,
-    ) -> io::Result<()> {
-        let mut out_str = "\t".repeat(depth);
-
-        if depth == 0 {
-            out_str += &format!("<{}>", token);
-        } else if depth == 1 {
-            if token.chars().all(|c| c.is_ascii_digit()) {
-                out_str += &format!("<L={}>", token);
-            } else {
-                out_str += &format!("<{}>", token);
-            }
-        } else {
-            out_str += &format!("\"{}\"", token);
-        }
-
-        if !node.cluster_ids.is_empty() {
-            out_str += &format!(" (cluster_count={})", node.cluster_ids.len());
-        }
-
-        writeln!(writer, "{}", out_str)?;
-
-        for (child_token, child_node) in &node.key_to_child_node {
-            self.print_node(child_token, child_node, depth + 1, writer, max_clusters)?;
-        }
-
-        for cid in node.cluster_ids.iter().take(max_clusters) {
-            if let Some(cluster) = self.id_to_cluster.get(cid) {
-                let cluster_str = format!("{}\t{}", "\t".repeat(depth + 1), cluster);
-                writeln!(writer, "{}", cluster_str)?;
-            }
-        }
-
-        Ok(())
+        // self.print_node("root", &self.root_node, 0, writer, max_clusters)
+        self.root_node
+            .print("root", 0, writer, max_clusters, &self.id_to_cluster)
     }
 }

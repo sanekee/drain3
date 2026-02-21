@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::drain::{Drain, UpdateType};
+    use crate::cluster::UpdateType;
+    use crate::drain::Drain;
 
     #[test]
     fn test_drain_parsing() {
-        let mut drain = Drain::new(4, 0.4, 100, None, vec![], "<*>".to_string(), true);
+        let mut drain = Drain::new(4, 0.4, 100, None, vec![], true, "TOKEN", "<", ">");
 
         let log1 = "Connected to 10.0.0.1";
         let (cluster1, type1) = drain.add_log_message(log1);
@@ -16,7 +17,7 @@ mod tests {
         let (cluster2, type2) = drain.add_log_message(log2);
         assert_eq!(type2, UpdateType::Updated);
         assert_eq!(cluster2.cluster_id, 1);
-        assert_eq!(cluster2.get_template(), "Connected to <*>");
+        assert_eq!(cluster2.get_template(), "Connected to <TOKEN1>");
 
         let log3 = "Disconnect from 10.0.0.1";
         let (cluster3, type3) = drain.add_log_message(log3);
@@ -26,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_drain_max_children() {
-        let mut drain = Drain::new(4, 0.4, 2, None, vec![], "<*>".to_string(), true);
+        let mut drain = Drain::new(4, 0.4, 2, None, vec![], true, "TOKEN", "<", ">");
         // Simulate filling up a node
         drain.add_log_message("A");
         drain.add_log_message("B");

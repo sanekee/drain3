@@ -1,9 +1,9 @@
 use drain3::config::TemplateMinerConfig;
 
-use drain3::FilePersistence;
-use drain3::TemplateMiner;
-use drain3::drain::LogCluster;
-use drain3::drain::SearchStrategy;
+use drain3::file_persistence::FilePersistence;
+use drain3::template_miner::TemplateMiner;
+use drain3::{LogCluster, SearchStrategy};
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
