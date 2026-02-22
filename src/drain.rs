@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    io::{self, Write},
-};
+use std::collections::HashMap;
+use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
 
+use crate::cluster;
 use crate::cluster::{LogCluster, Node, SearchStrategy, UpdateType};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,7 +16,6 @@ pub struct Drain {
     pub parametrize_numeric_tokens: bool,
 
     pub root_node: Node,
-    pub id_to_cluster: HashMap<usize, LogCluster>, // TODO: implement LRU if max_clusters is set
     pub clusters_counter: usize,
 
     #[serde(skip)]
@@ -62,7 +61,6 @@ impl Drain {
             extra_delimiters,
             parametrize_numeric_tokens,
             root_node: Node::new(),
-            id_to_cluster: HashMap::new(),
             clusters_counter: 0,
             token_template: token_template.to_string(),
             token_template_counter: 0,
@@ -85,12 +83,14 @@ impl Drain {
         content.split_whitespace().map(|s| s.to_string()).collect()
     }
 
-    pub fn add_log_message(&mut self, content: &str) -> (LogCluster, UpdateType) {
+    pub fn add_log_message(
+        &mut self,
+        content: &str,
+    ) -> (Option<Arc<Mutex<LogCluster>>>, UpdateType) {
         let content_tokens = self.get_content_as_tokens(content);
 
         let match_result = Self::tree_search(
             &self.root_node,
-            &self.id_to_cluster,
             &content_tokens,
             self.sim_th,
             true,
@@ -101,8 +101,15 @@ impl Drain {
         match match_result {
             Some(cluster_id) => {
                 let mut counter = self.token_template_counter;
-                let cluster = self.id_to_cluster.get_mut(&cluster_id).unwrap();
-                let update_type = cluster.update_template(
+                let cluster_ref = cluster::LogCluster::get_cluster_by_id(&cluster_id);
+
+                if cluster_ref.is_none() {
+                    println!("failed to get cluster by id {}", cluster_id);
+                    return (None, UpdateType::None);
+                }
+
+                let cluster = cluster_ref.unwrap();
+                let update_type = cluster.lock().unwrap().update_template(
                     &content_tokens,
                     |t| -> bool { Self::is_token(&self.token_template_check, t) },
                     || {
@@ -116,30 +123,32 @@ impl Drain {
 
                 self.token_template_counter = counter;
 
-                (cluster.clone(), update_type)
+                (Some(cluster), update_type)
             }
             None => {
                 self.clusters_counter += 1;
                 let cluster_id = self.clusters_counter;
-                let cluster = LogCluster::new(content_tokens.clone(), cluster_id);
-                self.id_to_cluster.insert(cluster_id, cluster.clone());
 
-                Self::add_seq_to_prefix_tree(
+                let cluster_ref = Self::add_seq_to_prefix_tree(
                     &mut self.root_node,
-                    &cluster,
+                    cluster_id,
+                    &content_tokens,
                     self.log_cluster_depth,
                     self.max_children,
                     self.parametrize_numeric_tokens,
                 );
 
-                (cluster, UpdateType::Created)
+                if cluster_ref.is_none() {
+                    return (None, UpdateType::None);
+                }
+
+                (cluster_ref, UpdateType::Created)
             }
         }
     }
 
     fn tree_search(
         root_node: &Node,
-        id_to_cluster: &HashMap<usize, LogCluster>,
         tokens: &[String],
         sim_th: f64,
         include_params: bool,
@@ -152,31 +161,12 @@ impl Drain {
         let cur_node = root_node.get(&token_count.to_string())?;
 
         if token_count == 0 {
-            return cur_node.first_cluster_id();
+            return cur_node.get_first_cluster_id();
         }
 
-        let mut cur_node = cur_node;
-        let max_node_depth = log_cluster_depth - 2;
-
-        let mut cur_node_depth = 1;
-        for token in tokens {
-            if cur_node_depth >= max_node_depth {
-                break;
-            }
-            if cur_node_depth == token_count {
-                break;
-            }
-
-            if let Some(node) = cur_node.find_next(token) {
-                cur_node = node;
-            } else {
-                return None;
-            }
-            cur_node_depth += 1;
-        }
+        let mut cur_node = cur_node.search(tokens, log_cluster_depth);
 
         Self::fast_match(
-            id_to_cluster,
             &cur_node.cluster_ids,
             tokens,
             sim_th,
@@ -186,7 +176,6 @@ impl Drain {
     }
 
     fn fast_match(
-        id_to_cluster: &HashMap<usize, LogCluster>,
         cluster_ids: &[usize],
         tokens: &[String],
         sim_th: f64,
@@ -282,58 +271,33 @@ impl Drain {
 
     fn add_seq_to_prefix_tree(
         root_node: &mut Node,
-        cluster: &LogCluster,
+        cluster_id: usize,
+        tokens: &Vec<String>,
         log_cluster_depth: usize,
         max_children: usize,
         parametrize_numeric_tokens: bool,
-    ) {
-        let token_count = cluster.log_template_tokens.len();
+    ) -> Option<Arc<Mutex<LogCluster>>> {
+        let token_count = tokens.len();
         let token_count_str = token_count.to_string();
 
-        let first_layer_node = root_node.get_or_insert(&token_count_str);
+        let first_layer_node = root_node.get_or_insert_child(&token_count_str);
 
         let mut cur_node = first_layer_node;
 
-        if token_count == 0 {
-            cur_node.cluster_ids.push(cluster.cluster_id);
-            return;
-        }
-
-        let max_node_depth = log_cluster_depth - 2;
-        let mut current_depth = 1;
-
-        for token in &cluster.log_template_tokens {
-            if current_depth >= max_node_depth || current_depth >= token_count {
-                cur_node.cluster_ids.push(cluster.cluster_id);
-                break;
-            }
-
-            if cur_node.has_child(token) {
-                cur_node = cur_node.get_child_mut(token).unwrap();
-            } else {
-                let has_numbers = parametrize_numeric_tokens && Self::has_numbers(token);
-
-                if has_numbers {
-                    cur_node = cur_node.get_or_insert_param();
-                } else if cur_node.has_param() {
-                    if cur_node.child_count() < max_children {
-                        cur_node = cur_node.get_or_insert_child(token);
-                    } else {
-                        cur_node = cur_node.get_param_mut().unwrap();
-                    }
-                } else if cur_node.child_count() + 1 < max_children {
-                    cur_node = cur_node.get_or_insert_child(token);
-                } else if cur_node.child_count() + 1 == max_children {
-                    cur_node = cur_node.get_or_insert_param();
-                } else {
-                    cur_node = cur_node.get_or_insert_param();
-                }
-            }
-            current_depth += 1;
-        }
+        cur_node.add_cluster(
+            cluster_id,
+            tokens,
+            log_cluster_depth,
+            max_children,
+            parametrize_numeric_tokens,
+        )
     }
 
-    pub fn match_cluster(&self, content: &str, strategy: SearchStrategy) -> Option<LogCluster> {
+    pub fn match_cluster(
+        &self,
+        content: &str,
+        strategy: SearchStrategy,
+    ) -> Option<Arc<Mutex<LogCluster>>> {
         let required_sim_th = 1.0;
 
         let content_tokens = self.get_content_as_tokens(content);
@@ -342,7 +306,6 @@ impl Drain {
             let all_ids = self.get_clusters_ids_for_seq_len(content_tokens.len());
 
             Self::fast_match(
-                &self.id_to_cluster,
                 &all_ids,
                 &content_tokens,
                 required_sim_th,
@@ -357,14 +320,13 @@ impl Drain {
 
             SearchStrategy::Fast => Self::tree_search(
                 &self.root_node,
-                &self.id_to_cluster,
                 &content_tokens,
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
                 &self.token_template,
             )
-            .and_then(|id| self.id_to_cluster.get(&id).cloned()),
+            .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id)),
 
             SearchStrategy::Fallback => Self::tree_search(
                 &self.root_node,
@@ -403,7 +365,6 @@ impl Drain {
 
     pub fn print_tree<W: Write>(&self, writer: &mut W, max_clusters: usize) -> io::Result<()> {
         // self.print_node("root", &self.root_node, 0, writer, max_clusters)
-        self.root_node
-            .print("root", 0, writer, max_clusters, &self.id_to_cluster)
+        self.root_node.print("root", 0, writer, max_clusters)
     }
 }
