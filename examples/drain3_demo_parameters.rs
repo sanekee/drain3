@@ -70,14 +70,17 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        let parameters = match miner.extract_parameters(&log_cluster.get_template(), content, true)
-        {
+        let parameters = match miner.extract_parameters(
+            &log_cluster.lock().unwrap().get_template(),
+            content,
+            true,
+        ) {
             Some(params) => params,
             None => {
                 println!(
                     "failed to extract parameters, template {}: {}\n line {}: {}",
-                    log_cluster.cluster_id,
-                    &log_cluster.get_template(),
+                    log_cluster.lock().unwrap().get_cluster_id(),
+                    &log_cluster.lock().unwrap().get_template(),
                     line_count + 1,
                     &content
                 );
@@ -98,8 +101,12 @@ fn main() -> anyhow::Result<()> {
         writeln!(
             output_file,
             "{},\"{}\",{}",
-            log_cluster.cluster_id,
-            log_cluster.get_template().replace("\"", "\"\""),
+            log_cluster.lock().unwrap().get_cluster_id(),
+            log_cluster
+                .lock()
+                .unwrap()
+                .get_template()
+                .replace("\"", "\"\""),
             &parameters_str,
         )?;
 
@@ -110,10 +117,8 @@ fn main() -> anyhow::Result<()> {
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
             println!(
-                "Matching line: {}, rate {:.1} lines/sec, {} clusters.",
-                line_count,
-                batch_lines_sec,
-                miner.drain.id_to_cluster.len()
+                "Matching line: {}, rate {:.1} lines/sec",
+                line_count, batch_lines_sec,
             );
             batch_start = now;
         }
@@ -127,14 +132,11 @@ fn main() -> anyhow::Result<()> {
     };
 
     println!(
-        "--- Done matching file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, {} clusters",
-        duration,
-        line_count,
-        lines_per_sec,
-        miner.drain.id_to_cluster.len()
+        "--- Done matching file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec",
+        duration, line_count, lines_per_sec,
     );
 
-    let mut clusters: Vec<&LogCluster> = miner.drain.id_to_cluster.values().collect();
+    let mut clusters: Vec<LogCluster> = miner.drain.get_clusters();
     clusters.sort_by_key(|c| c.cluster_id);
 
     for cluster in clusters {

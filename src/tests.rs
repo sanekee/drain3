@@ -10,19 +10,27 @@ mod tests {
         let log1 = "Connected to 10.0.0.1";
         let (cluster1, type1) = drain.add_log_message(log1);
         assert_eq!(type1, UpdateType::Created);
-        assert_eq!(cluster1.cluster_id, 1);
-        assert_eq!(cluster1.get_template(), "Connected to 10.0.0.1");
+        let cluster1_ref = cluster1.unwrap();
+        assert_eq!(cluster1_ref.lock().unwrap().get_cluster_id(), 1);
+        assert_eq!(
+            cluster1_ref.lock().unwrap().get_template(),
+            "Connected to 10.0.0.1"
+        );
 
         let log2 = "Connected to 10.0.0.2";
         let (cluster2, type2) = drain.add_log_message(log2);
         assert_eq!(type2, UpdateType::Updated);
-        assert_eq!(cluster2.cluster_id, 1);
-        assert_eq!(cluster2.get_template(), "Connected to <TOKEN1>");
+        let cluster2_ref = cluster2.unwrap();
+        assert_eq!(cluster2_ref.lock().unwrap().get_cluster_id(), 1);
+        assert_eq!(
+            cluster2_ref.lock().unwrap().get_template(),
+            "Connected to <TOKEN1>"
+        );
 
         let log3 = "Disconnect from 10.0.0.1";
         let (cluster3, type3) = drain.add_log_message(log3);
         assert_eq!(type3, UpdateType::Created);
-        assert_eq!(cluster3.cluster_id, 2);
+        assert_eq!(cluster3.unwrap().lock().unwrap().get_cluster_id(), 2);
     }
 
     #[test]

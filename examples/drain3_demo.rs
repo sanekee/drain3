@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
         let (cluster, update_type) = miner.add_log_message(content);
 
         let entry = sample_lines
-            .entry(cluster.cluster_id)
+            .entry(cluster.unwrap().lock().unwrap().get_cluster_id())
             .or_insert_with(Vec::new);
 
         let exists = entry.iter().any(|sl| sl.update_type == update_type);
@@ -103,10 +103,8 @@ fn main() -> anyhow::Result<()> {
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
             println!(
-                "Processing line: {}, rate {:.1} lines/sec, {} clusters so far.",
-                line_count,
-                batch_lines_sec,
-                miner.drain.id_to_cluster.len()
+                "Processing line: {}, rate {:.1} lines/sec.",
+                line_count, batch_lines_sec,
             );
             batch_start = now;
         }
@@ -120,11 +118,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     println!(
-        "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, {} clusters",
-        duration,
-        line_count,
-        lines_per_sec,
-        miner.drain.id_to_cluster.len()
+        "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec",
+        duration, line_count, lines_per_sec,
     );
 
     println!("Prefix tree:");
@@ -134,7 +129,7 @@ fn main() -> anyhow::Result<()> {
         .print_tree(&mut stdout, config.drain_max_clusters.unwrap_or_default())
         .unwrap();
 
-    let mut clusters: Vec<&LogCluster> = miner.drain.id_to_cluster.values().collect();
+    let mut clusters: Vec<LogCluster> = miner.drain.get_clusters();
     clusters.sort_by_key(|c| c.cluster_id);
 
     for cluster in clusters {

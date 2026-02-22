@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use crate::cluster;
 use crate::cluster::{LogCluster, Node, SearchStrategy, UpdateType};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Drain {
     pub log_cluster_depth: usize,
     pub sim_th: f64,
@@ -18,15 +18,15 @@ pub struct Drain {
     pub root_node: Node,
     pub clusters_counter: usize,
 
-    #[serde(skip)]
+    // #[serde(skip)]
     token_prefix: String,
-    #[serde(skip)]
+    // #[serde(skip)]
     token_suffix: String,
-    #[serde(skip)]
+    // #[serde(skip)]
     token_template: String,
-    #[serde(skip)]
+    // #[serde(skip)]
     token_template_counter: usize,
-    #[serde(skip)]
+    // #[serde(skip)]
     token_template_check: String,
 }
 
@@ -164,19 +164,13 @@ impl Drain {
             return cur_node.get_first_cluster_id();
         }
 
-        let mut cur_node = cur_node.search(tokens, log_cluster_depth);
+        let mut cur_node = cur_node.search(tokens, log_cluster_depth)?;
 
-        Self::fast_match(
-            &cur_node.cluster_ids,
-            tokens,
-            sim_th,
-            include_params,
-            token_template,
-        )
+        Self::fast_match(cur_node, tokens, sim_th, include_params, token_template)
     }
 
     fn fast_match(
-        cluster_ids: &[usize],
+        node: &Node,
         tokens: &[String],
         sim_th: f64,
         include_params: bool,
@@ -184,29 +178,48 @@ impl Drain {
     ) -> Option<usize> {
         let mut max_sim = -1.0;
         let mut max_param_count = -1;
-        let mut max_cluster: Option<&LogCluster> = None;
+        let mut max_cluster: Option<Arc<Mutex<LogCluster>>> = None;
 
-        for &cluster_id in cluster_ids {
-            if let Some(cluster) = id_to_cluster.get(&cluster_id) {
-                let (cur_sim, param_count) = Self::get_seq_distance(
-                    &cluster.log_template_tokens,
-                    tokens,
-                    token_template,
-                    include_params,
-                );
-                if cur_sim > max_sim || (cur_sim == max_sim && param_count > max_param_count) {
-                    max_sim = cur_sim;
-                    max_param_count = param_count;
-                    max_cluster = Some(cluster);
-                }
+        let clusters = node.get_clusters();
+        for cluster in clusters {
+            let (cur_sim, param_count) = Self::get_seq_distance(
+                &cluster.lock().unwrap().get_tokens(),
+                tokens,
+                token_template,
+                include_params,
+            );
+            if cur_sim > max_sim || (cur_sim == max_sim && param_count > max_param_count) {
+                max_sim = cur_sim;
+                max_param_count = param_count;
+                max_cluster = Some(cluster);
             }
         }
 
         if max_sim >= sim_th {
-            max_cluster.map(|c| c.cluster_id)
+            max_cluster.map(|c| c.lock().unwrap().get_cluster_id())
         } else {
             None
         }
+    }
+
+    fn full_match(
+        node: &Node,
+        tokens: &[String],
+        sim_th: f64,
+        include_params: bool,
+        token_template: &String,
+    ) -> Option<usize> {
+        if let Some(id) = Self::fast_match(node, tokens, sim_th, include_params, token_template) {
+            return Some(id);
+        }
+
+        for n in node.children() {
+            if let Some(id) = Self::full_match(n, tokens, sim_th, include_params, token_template) {
+                return Some(id);
+            }
+        }
+
+        None
     }
 
     fn get_seq_distance(
@@ -300,19 +313,22 @@ impl Drain {
     ) -> Option<Arc<Mutex<LogCluster>>> {
         let required_sim_th = 1.0;
 
-        let content_tokens = self.get_content_as_tokens(content);
+        let tokens = self.get_content_as_tokens(content);
 
         let full_search = || {
-            let all_ids = self.get_clusters_ids_for_seq_len(content_tokens.len());
+            let token_count = tokens.len();
 
-            Self::fast_match(
-                &all_ids,
-                &content_tokens,
+            // At first level, children are grouped by token count
+            let cur_node = self.root_node.get(&token_count.to_string())?;
+
+            Self::full_match(
+                cur_node,
+                &tokens,
                 required_sim_th,
                 true,
                 &self.token_template_check,
             )
-            .and_then(|id| self.id_to_cluster.get(&id).cloned())
+            .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id))
         };
 
         match strategy {
@@ -320,51 +336,46 @@ impl Drain {
 
             SearchStrategy::Fast => Self::tree_search(
                 &self.root_node,
-                &content_tokens,
+                &tokens,
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.token_template,
+                &self.token_template_check,
             )
             .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id)),
 
             SearchStrategy::Fallback => Self::tree_search(
                 &self.root_node,
-                &self.id_to_cluster,
-                &content_tokens,
+                &tokens,
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.token_template,
+                &self.token_template_check,
             )
-            .and_then(|id| self.id_to_cluster.get(&id).cloned())
+            .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id))
             .or_else(full_search),
         }
-    }
-
-    pub fn get_clusters_ids_for_seq_len(&self, seq_fir: impl ToString) -> Vec<usize> {
-        fn append_clusters_recursive(node: &Node, target: &mut Vec<usize>) {
-            target.extend(&node.cluster_ids);
-
-            for child in node.children() {
-                append_clusters_recursive(child, target);
-            }
-        }
-
-        let key = seq_fir.to_string();
-
-        let Some(cur_node) = self.root_node.get(&key) else {
-            return Vec::new();
-        };
-
-        let mut target = Vec::new();
-        append_clusters_recursive(cur_node, &mut target);
-
-        target
     }
 
     pub fn print_tree<W: Write>(&self, writer: &mut W, max_clusters: usize) -> io::Result<()> {
         // self.print_node("root", &self.root_node, 0, writer, max_clusters)
         self.root_node.print("root", 0, writer, max_clusters)
+    }
+
+    pub fn get_clusters(&self) -> Vec<LogCluster> {
+        let mut clusters = Vec::new();
+        let mut append_clusters = |n: &Node| {
+            for c in n.get_clusters() {
+                clusters.push(c.lock().unwrap().clone());
+            }
+        };
+
+        append_clusters(&self.root_node);
+
+        for n in self.root_node.children() {
+            append_clusters(n);
+        }
+
+        clusters
     }
 }

@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use serde::{Deserialize, Serialize};
 use strum_macros::Display;
 
-static ClusterMap: LazyLock<Mutex<HashMap<usize, Arc<Mutex<LogCluster>>>>> =
+static CLUSTER_MAP: LazyLock<Mutex<HashMap<usize, Arc<Mutex<LogCluster>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub enum SearchStrategy {
@@ -35,6 +35,14 @@ impl LogCluster {
             cluster_id,
             size: 1,
         }
+    }
+
+    pub fn get_tokens(&self) -> Vec<String> {
+        self.tokens.clone()
+    }
+
+    pub fn get_cluster_id(&self) -> usize {
+        self.cluster_id
     }
 
     pub fn get_template(&self) -> String {
@@ -74,7 +82,7 @@ impl LogCluster {
     }
 
     pub fn get_cluster_by_id(id: &usize) -> Option<Arc<Mutex<LogCluster>>> {
-        ClusterMap.lock().unwrap().get(&id).cloned()
+        CLUSTER_MAP.lock().unwrap().get(&id).cloned()
     }
 }
 
@@ -90,11 +98,11 @@ impl std::fmt::Display for LogCluster {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Node {
     clusters: Vec<Arc<Mutex<LogCluster>>>,
     children: HashMap<String, Box<Node>>,
-    param_child: Option<Box<Node>>,
+    wildcard_child: Option<Box<Node>>,
 }
 
 impl Default for Node {
@@ -108,7 +116,7 @@ impl Node {
         Self {
             clusters: Vec::new(),
             children: HashMap::new(),
-            param_child: None,
+            wildcard_child: None,
         }
     }
 
@@ -116,15 +124,15 @@ impl Node {
         self.children.get(token).map(Box::as_ref)
     }
 
-    pub fn param_child(&self) -> Option<&Node> {
-        self.param_child.as_ref().map(|b| b.as_ref())
+    pub fn get_wildcard_child(&self) -> Option<&Node> {
+        self.wildcard_child.as_ref().map(|b| b.as_ref())
     }
 
     pub fn find_next(&self, token: &String) -> Option<&Node> {
         self.children
             .get(token)
             .map(Box::as_ref)
-            .or_else(|| self.param_child.as_ref().map(Box::as_ref))
+            .or_else(|| self.wildcard_child.as_ref().map(Box::as_ref))
     }
 
     pub fn first_cluster(&self) -> Option<Arc<Mutex<LogCluster>>> {
@@ -135,8 +143,12 @@ impl Node {
         self.children.contains_key(token)
     }
 
+    pub fn get_clusters(&self) -> Vec<Arc<Mutex<LogCluster>>> {
+        self.clusters.clone()
+    }
+
     pub fn child_count(&self) -> usize {
-        if self.param_child.is_some() {
+        if self.wildcard_child.is_some() {
             return 1 + self.children.len();
         }
         1 + self.children.len()
@@ -153,24 +165,24 @@ impl Node {
             .as_mut()
     }
 
-    pub fn get_or_insert_param(&mut self) -> &mut Node {
-        self.param_child
+    pub fn get_or_insert_wildcard(&mut self) -> &mut Node {
+        self.wildcard_child
             .get_or_insert_with(|| Box::new(Node::new()))
             .as_mut()
     }
 
-    pub fn has_param(&self) -> bool {
-        self.param_child.is_some()
+    pub fn has_wildcard(&self) -> bool {
+        self.wildcard_child.is_some()
     }
 
-    pub fn get_param_mut(&mut self) -> Option<&mut Node> {
-        self.param_child.as_deref_mut()
+    pub fn get_wildcard_mut(&mut self) -> Option<&mut Node> {
+        self.wildcard_child.as_deref_mut()
     }
 
     pub fn children(&self) -> Vec<&Node> {
         let mut result: Vec<&Node> = self.children.values().map(|n| n.as_ref()).collect();
-        if let Some(param_child) = &self.param_child {
-            result.push(param_child.as_ref());
+        if let Some(wildcard_child) = &self.wildcard_child {
+            result.push(wildcard_child.as_ref());
         }
         result
     }
@@ -185,10 +197,10 @@ impl Node {
         tokens: &Vec<String>,
         log_cluster_depth: usize,
         max_children: usize,
-        parametrize_numeric_tokens: bool,
+        wildcardetrize_numeric_tokens: bool,
     ) -> Option<Arc<Mutex<LogCluster>>> {
         let cluster = Arc::new(Mutex::new(LogCluster::new(tokens, cluster_id)));
-        ClusterMap
+        CLUSTER_MAP
             .lock()
             .unwrap()
             .insert(cluster_id, cluster.clone());
@@ -213,25 +225,25 @@ impl Node {
             if cur_node.has_child(token) {
                 cur_node = cur_node.get_child_mut(token).unwrap();
             } else {
-                let has_numbers = parametrize_numeric_tokens && Self::has_numbers(token);
+                let has_numbers = wildcardetrize_numeric_tokens && Self::has_numbers(token);
 
                 if has_numbers {
-                    cur_node = cur_node.get_or_insert_param();
+                    cur_node = cur_node.get_or_insert_wildcard();
                     continue;
                 }
 
-                if cur_node.has_param() {
+                if cur_node.has_wildcard() {
                     if cur_node.child_count() < max_children {
                         cur_node = cur_node.get_or_insert_child(token);
                     } else {
-                        cur_node = cur_node.get_param_mut().unwrap();
+                        cur_node = cur_node.get_wildcard_mut().unwrap();
                     }
                 } else if cur_node.child_count() + 1 < max_children {
                     cur_node = cur_node.get_or_insert_child(token);
                 } else if cur_node.child_count() + 1 == max_children {
-                    cur_node = cur_node.get_or_insert_param();
+                    cur_node = cur_node.get_or_insert_wildcard();
                 } else {
-                    cur_node = cur_node.get_or_insert_param();
+                    cur_node = cur_node.get_or_insert_wildcard();
                 }
             }
             current_depth += 1;
@@ -303,15 +315,8 @@ impl Node {
         }
 
         for c in self.clusters.iter().take(max_clusters) {
-            if let Some(cluster) = ClusterMap
-                .lock()
-                .unwrap()
-                .get(&c.lock().unwrap().cluster_id)
-            {
-                let cluster_str =
-                    format!("{}\t{}", "\t".repeat(depth + 1), cluster.lock().unwrap());
-                writeln!(writer, "{}", cluster_str)?;
-            }
+            let cluster_str = format!("{}\t{}", "\t".repeat(depth + 1), c.lock().unwrap());
+            writeln!(writer, "{}", cluster_str)?;
         }
 
         Ok(())

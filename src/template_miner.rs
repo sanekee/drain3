@@ -4,6 +4,7 @@ use crate::drain::Drain;
 use crate::masking::{AbstractMaskingInstruction, LogMasker, MaskingInstruction};
 use crate::persistence::PersistenceHandler;
 use anyhow::Result;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fancy_regex::Regex;
@@ -84,7 +85,10 @@ impl<'a> TemplateMiner<'a> {
             .as_secs()
     }
 
-    pub fn add_log_message(&mut self, log_message: &str) -> (LogCluster, UpdateType) {
+    pub fn add_log_message(
+        &mut self,
+        log_message: &str,
+    ) -> (Option<Arc<Mutex<LogCluster>>>, UpdateType) {
         let masked_content = self.masker.mask(log_message);
         let (cluster, change_type) = self.drain.add_log_message(&masked_content);
 
@@ -99,7 +103,11 @@ impl<'a> TemplateMiner<'a> {
         (cluster, change_type)
     }
 
-    pub fn match_cluster(&self, content: &str, strategy: SearchStrategy) -> Option<LogCluster> {
+    pub fn match_cluster(
+        &self,
+        content: &str,
+        strategy: SearchStrategy,
+    ) -> Option<Arc<Mutex<LogCluster>>> {
         let masked_content = self.masker.mask(content);
         self.drain.match_cluster(masked_content.as_str(), strategy)
     }
@@ -111,9 +119,9 @@ impl<'a> TemplateMiner<'a> {
 
     fn save_state(&mut self) -> Result<()> {
         if let Some(handler) = &mut self.persistence_handler {
-            let state = serde_json::to_vec(&self.drain)?;
-            handler.save_state(&state)?;
-            self.last_save_time = Self::current_time_sec();
+            // let state = serde_json::to_vec(&self.drain)?;
+            // handler.save_state(&state)?;
+            // self.last_save_time = Self::current_time_sec();
         }
         Ok(())
     }
@@ -123,8 +131,8 @@ impl<'a> TemplateMiner<'a> {
             && let Some(state) = handler.load_state()?
         {
             // Decompression logic would go here
-            let loaded_drain: Drain = serde_json::from_slice(&state)?;
-            self.drain = loaded_drain;
+            // let loaded_drain: Drain = serde_json::from_slice(&state)?;
+            // self.drain = loaded_drain;
         }
         Ok(())
     }
