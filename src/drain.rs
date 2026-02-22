@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
-use crate::cluster;
+use crate::cluster::{self, SerializableNode};
 use crate::cluster::{LogCluster, Node, SearchStrategy, UpdateType};
+
+use profiling::function;
 
 #[derive(Debug)]
 pub struct Drain {
@@ -83,6 +85,7 @@ impl Drain {
         content.split_whitespace().map(|s| s.to_string()).collect()
     }
 
+    #[function]
     pub fn add_log_message(
         &mut self,
         content: &str,
@@ -377,5 +380,71 @@ impl Drain {
         }
 
         clusters
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SerializableDrain {
+    root_node: SerializableNode,
+    pub log_cluster_depth: usize,
+    pub sim_th: f64,
+    pub max_children: usize,
+    pub max_clusters: Option<usize>,
+    pub extra_delimiters: Vec<String>,
+    pub parametrize_numeric_tokens: bool,
+
+    pub clusters_counter: usize,
+
+    #[serde(skip)]
+    token_prefix: String,
+    #[serde(skip)]
+    token_suffix: String,
+    #[serde(skip)]
+    token_template: String,
+    #[serde(skip)]
+    token_template_counter: usize,
+    #[serde(skip)]
+    token_template_check: String,
+}
+
+impl From<&Drain> for SerializableDrain {
+    fn from(drain: &Drain) -> Self {
+        Self {
+            root_node: SerializableNode::from(&drain.root_node),
+            log_cluster_depth: drain.log_cluster_depth,
+            sim_th: drain.sim_th,
+            max_children: drain.max_children,
+            max_clusters: drain.max_clusters,
+            extra_delimiters: drain.extra_delimiters.clone(),
+            parametrize_numeric_tokens: drain.parametrize_numeric_tokens,
+            clusters_counter: drain.clusters_counter,
+
+            token_prefix: drain.token_prefix.clone(),
+            token_suffix: drain.token_suffix.clone(),
+            token_template: drain.token_template.clone(),
+            token_template_counter: drain.token_template_counter,
+            token_template_check: drain.token_template_check.clone(),
+        }
+    }
+}
+
+impl From<SerializableDrain> for Drain {
+    fn from(s: SerializableDrain) -> Self {
+        Self {
+            root_node: Node::from(s.root_node),
+            log_cluster_depth: s.log_cluster_depth,
+            sim_th: s.sim_th,
+            max_children: s.max_children,
+            max_clusters: s.max_clusters,
+            extra_delimiters: s.extra_delimiters.clone(),
+            parametrize_numeric_tokens: s.parametrize_numeric_tokens,
+            clusters_counter: s.clusters_counter,
+
+            token_prefix: s.token_prefix.clone(),
+            token_suffix: s.token_suffix.clone(),
+            token_template: s.token_template.clone(),
+            token_template_counter: s.token_template_counter,
+            token_template_check: s.token_template_check.clone(),
+        }
     }
 }

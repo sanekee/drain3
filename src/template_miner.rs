@@ -1,6 +1,6 @@
 use crate::cluster::{LogCluster, SearchStrategy, UpdateType};
 use crate::config::TemplateMinerConfig;
-use crate::drain::Drain;
+use crate::drain::{Drain, SerializableDrain};
 use crate::masking::{AbstractMaskingInstruction, LogMasker, MaskingInstruction};
 use crate::persistence::PersistenceHandler;
 use anyhow::Result;
@@ -117,11 +117,12 @@ impl<'a> TemplateMiner<'a> {
             && self.state_dirty
     }
 
-    fn save_state(&mut self) -> Result<()> {
+    pub fn save_state(&mut self) -> Result<()> {
         if let Some(handler) = &mut self.persistence_handler {
-            // let state = serde_json::to_vec(&self.drain)?;
-            // handler.save_state(&state)?;
-            // self.last_save_time = Self::current_time_sec();
+            let ser_drain = SerializableDrain::from(&self.drain);
+            let state = serde_json::to_vec(&ser_drain)?;
+            handler.save_state(&state)?;
+            self.last_save_time = Self::current_time_sec();
         }
         Ok(())
     }
@@ -131,8 +132,8 @@ impl<'a> TemplateMiner<'a> {
             && let Some(state) = handler.load_state()?
         {
             // Decompression logic would go here
-            // let loaded_drain: Drain = serde_json::from_slice(&state)?;
-            // self.drain = loaded_drain;
+            // let loaded_drain: SerializableDrain = serde_json::from_slice(&state)?;
+            // self.drain = Drain::from(loaded_drain);
         }
         Ok(())
     }

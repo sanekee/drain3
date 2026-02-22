@@ -322,3 +322,53 @@ impl Node {
         Ok(())
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SerializableNode {
+    clusters: Vec<LogCluster>,
+    children: HashMap<String, SerializableNode>,
+    wildcard_child: Option<Box<SerializableNode>>,
+}
+
+impl From<&Node> for SerializableNode {
+    fn from(node: &Node) -> Self {
+        Self {
+            clusters: node
+                .clusters
+                .iter()
+                .map(|c| c.lock().unwrap().clone())
+                .collect(),
+
+            children: node
+                .children
+                .iter()
+                .map(|(k, v)| (k.clone(), SerializableNode::from(v.as_ref())))
+                .collect(),
+
+            wildcard_child: node
+                .wildcard_child
+                .as_ref()
+                .map(|c| Box::new(SerializableNode::from(c.as_ref()))),
+        }
+    }
+}
+
+impl From<SerializableNode> for Node {
+    fn from(s: SerializableNode) -> Self {
+        Self {
+            clusters: s
+                .clusters
+                .into_iter()
+                .map(|c| Arc::new(Mutex::new(c)))
+                .collect(),
+
+            children: s
+                .children
+                .into_iter()
+                .map(|(k, v)| (k, Box::new(Node::from(v))))
+                .collect(),
+
+            wildcard_child: s.wildcard_child.map(|c| Box::new(Node::from(*c))),
+        }
+    }
+}
