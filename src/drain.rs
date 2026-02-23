@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
