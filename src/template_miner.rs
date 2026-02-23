@@ -7,7 +7,7 @@ use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fancy_regex::Regex;
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
@@ -163,7 +163,7 @@ impl<'a> TemplateMiner<'a> {
 
         let re = Regex::new(&template_regex).ok()?;
 
-        let captures = re.captures(&normalized).ok()??;
+        let captures = re.captures(&normalized)?;
 
         let mut extracted = Vec::new();
 
@@ -202,8 +202,8 @@ impl<'a> TemplateMiner<'a> {
                 for mi in instructions {
                     let mut pattern = mi.pattern().to_string();
 
-                    let unnamed_backref = Regex::new(r"\\(?!0)\d{1,2}")
-                        .expect("failed to compile unnamed backref regex");
+                    let unnamed_backref =
+                        Regex::new(r"\\[1-9]\d?").expect("failed to compile unnamed backref regex");
 
                     pattern = unnamed_backref.replace_all(&pattern, "(?:.+?)").to_string();
 

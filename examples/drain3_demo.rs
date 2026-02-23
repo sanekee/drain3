@@ -67,20 +67,19 @@ fn main() -> anyhow::Result<()> {
 
     println!("Processing {}...", &log_file_name);
 
-    // let guard = ProfilerGuard::new(500).unwrap();
-    let guard = pprof::ProfilerGuardBuilder::default()
-        .frequency(1000)
-        .blocklist(&[
-            "libc",
-            "libgcc",
-            "pthread",
-            "vdso",
-            "flamegraph",
-            "pprof",
-            "inferno",
-        ])
-        .build()
-        .unwrap();
+    // let guard = pprof::ProfilerGuardBuilder::default()
+    //     .frequency(1000)
+    //     .blocklist(&[
+    //         "libc",
+    //         "libgcc",
+    //         "pthread",
+    //         "vdso",
+    //         "flamegraph",
+    //         "pprof",
+    //         "inferno",
+    //     ])
+    //     .build()
+    //     .unwrap();
 
     for line in reader.lines() {
         let line_num = line_count + 1;
@@ -112,16 +111,16 @@ fn main() -> anyhow::Result<()> {
             });
         }
 
-        if let Ok(report) = guard.report().build() {
-            let file = File::create("examples/outputs/flamegraph.svg").unwrap();
-            let mut options = pprof::flamegraph::Options::default();
-            options.image_width = Some(3000);
-            report.flamegraph_with_options(file, &mut options).unwrap();
-            // report.flamegraph(file).unwrap();
-        }
+        // if let Ok(report) = guard.report().build() {
+        //     let file = File::create("examples/outputs/flamegraph.svg").unwrap();
+        //     let mut options = pprof::flamegraph::Options::default();
+        //     options.image_width = Some(3000);
+        //     report.flamegraph_with_options(file, &mut options).unwrap();
+        //     // report.flamegraph(file).unwrap();
+        // }
 
         line_count += 1;
-        if line_count % 100 == 0 {
+        if line_count % 10000 == 0 {
             break;
             let now = Instant::now();
             let batch_duration = now.duration_since(batch_start);

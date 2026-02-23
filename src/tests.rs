@@ -71,4 +71,194 @@ mod tests {
         let masked = masker.mask("User 123 logged in");
         assert_eq!(masked, "User <NUM> logged in");
     }
+
+    #[test]
+    fn test_id_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"(?:[0-9a-f]{2,}:){3,}[0-9a-f]{2,}".to_string(),
+                mask_with: "ID".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("device aa:bb:cc:dd:ee connected");
+
+        assert_eq!(masked, "device <ID> connected");
+    }
+
+    #[test]
+    fn test_ip_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"(\d{1,3}(\.\d{1,3}){3})".to_string(),
+                mask_with: "IP".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("connect 10.1.1.0 success");
+
+        assert_eq!(masked, "connect <IP> success");
+    }
+
+    #[test]
+    fn test_host_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"([A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+)".to_string(),
+                mask_with: "HOST".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("connect server.example.com now");
+
+        assert_eq!(masked, "connect <HOST> now");
+    }
+
+    #[test]
+    fn test_seq_lower_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"(([0-9a-f]{6,} ?){2,}([0-9a-f]{6,}))".to_string(),
+                mask_with: "SEQ".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("seq abcdef 123456 fedcba done");
+
+        assert_eq!(masked, "seq <SEQ> done");
+    }
+
+    #[test]
+    fn test_seq_upper_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"(([0-9A-F]{4} ?){3,}([0-9A-F]{4}))".to_string(),
+                mask_with: "SEQ".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("seq ABCD 0123 4567 89AB done");
+
+        assert_eq!(masked, "seq <SEQ> done");
+    }
+
+    #[test]
+    fn test_hex_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"(0x[a-fA-F0-9]+)".to_string(),
+                mask_with: "HEX".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("value 0xdeadbeef found");
+
+        assert_eq!(masked, "value <HEX> found");
+    }
+
+    #[test]
+    fn test_num_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"([-+]?\d+)".to_string(),
+                mask_with: "NUM".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("value -42 found");
+
+        assert_eq!(masked, "value <NUM> found");
+    }
+
+    #[test]
+    fn test_cmd_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r#"(executed cmd )(".+?")"#.to_string(),
+                mask_with: "CMD".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask(r#"executed cmd "rm -rf /""#);
+
+        assert_eq!(masked, "<CMD>");
+    }
+
+    #[test]
+    fn test_str_single_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r"'[^']*'".to_string(),
+                mask_with: "STR".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask("user 'john' logged in");
+
+        assert_eq!(masked, "user <STR> logged in");
+    }
+
+    #[test]
+    fn test_str_double_masking() {
+        use crate::masking::{
+            AbstractMaskingInstruction, LogMasker, MaskingInstruction, MaskingInstructionConfig,
+        };
+
+        let instructions: Vec<Box<dyn AbstractMaskingInstruction>> = vec![Box::new(
+            MaskingInstruction::new(&MaskingInstructionConfig {
+                pattern: r#""[^"]*""#.to_string(),
+                mask_with: "STR".to_string(),
+            }),
+        )];
+
+        let masker = LogMasker::new(instructions, "<", ">");
+        let masked = masker.mask(r#"user "john" logged in"#);
+
+        assert_eq!(masked, "user <STR> logged in");
+    }
 }

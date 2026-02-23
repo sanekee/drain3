@@ -12,37 +12,41 @@ drain_max_clusters = 1024
 drain_extra_delimiters = ["_"]
 
 [[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)(([0-9a-f]{2,}:){3,}([0-9a-f]{2,}))((?=[^A-Za-z0-9])|$)"
+regex_pattern = "(?:[0-9a-f]{2,}:){3,}[0-9a-f]{2,}"
 mask_with = "ID"
 
 [[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})((?=[^A-Za-z0-9])|$)"
+regex_pattern = "(\\d{1,3}(\\.\\d{1,3}){3})"
 mask_with = "IP"
 
 [[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)([0-9a-f]{6,} ?){3,}((?=[^A-Za-z0-9])|$)"
-mask_with = "SEQ"
+regex_pattern = "([A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+)"
+mask_with = "HOST"
+
+# [[masking_instructions]]
+# regex_pattern ="(([0-9a-f]{6,} ?){2,}([0-9a-f]{6,}))"
+# mask_with = "SEQ"
+
+# [[masking_instructions]]
+# regex_pattern = "(([0-9A-F]{4} ?){3,}([0-9A-F]{4}))"
+# mask_with = "SEQ"
 
 [[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)([0-9A-F]{4} ?){4,}((?=[^A-Za-z0-9])|$)"
-mask_with = "SEQ"
-
-[[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)(0x[a-f0-9A-F]+)((?=[^A-Za-z0-9])|$)"
+regex_pattern = "(0x[a-fA-F0-9]+)"
 mask_with = "HEX"
 
 [[masking_instructions]]
-regex_pattern = "((?<=[^A-Za-z0-9])|^)([\\-\\+]?\\d+)((?=[^A-Za-z0-9])|$)"
+regex_pattern = "([-+]?\\d+)"
 mask_with = "NUM"
 
-[[masking_instructions]]
-regex_pattern = "(?<=executed cmd )(\".+?\")"
-mask_with = "CMD"
+# [[masking_instructions]]
+# regex_pattern = "(executed cmd )(\".+?\")"
+# mask_with = "CMD"
 
 [[masking_instructions]]
-regex_pattern = "'.*'"
+regex_pattern = "'[^']*'"
 mask_with = "STR"
 
 [[masking_instructions]]
-regex_pattern = "\".*\""
+regex_pattern = "\"[^\"]*\""
 mask_with = "STR"
