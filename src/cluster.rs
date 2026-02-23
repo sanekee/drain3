@@ -355,12 +355,18 @@ impl From<&Node> for SerializableNode {
 
 impl From<SerializableNode> for Node {
     fn from(s: SerializableNode) -> Self {
+        let mut clusters: Vec<Arc<Mutex<LogCluster>>> = Vec::new();
+        for ser_cluster in s.clusters {
+            let cluster_id = ser_cluster.cluster_id;
+            let cluster = Arc::new(Mutex::new(ser_cluster));
+            CLUSTER_MAP
+                .lock()
+                .unwrap()
+                .insert(cluster_id, cluster.clone());
+            clusters.push(cluster.clone());
+        }
         Self {
-            clusters: s
-                .clusters
-                .into_iter()
-                .map(|c| Arc::new(Mutex::new(c)))
-                .collect(),
+            clusters: clusters.clone(),
 
             children: s
                 .children

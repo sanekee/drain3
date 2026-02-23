@@ -1,12 +1,16 @@
-snapshot_interval_minutes = 30
-snapshot_compress_state = true
+enable_profiler = false
+save_state = true
+max_lines = 0
+
+[miner_config]
+snapshot_interval_minutes = 1
 
 mask_prefix = "<:"
 mask_suffix = ":>"
 
 engine = "Drain"
 drain_sim_th = 0.5
-drain_depth = 5
+drain_depth = 4
 drain_max_children = 100
 drain_max_clusters = 1024
 drain_extra_delimiters = ["_"]

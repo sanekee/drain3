@@ -19,15 +19,10 @@ pub struct Drain {
     pub root_node: Node,
     pub clusters_counter: usize,
 
-    // #[serde(skip)]
     token_prefix: String,
-    // #[serde(skip)]
     token_suffix: String,
-    // #[serde(skip)]
     token_template: String,
-    // #[serde(skip)]
     token_template_counter: usize,
-    // #[serde(skip)]
     token_template_check: String,
 }
 
@@ -166,7 +161,7 @@ impl Drain {
             return cur_node.get_first_cluster_id();
         }
 
-        let mut cur_node = cur_node.search(tokens, log_cluster_depth)?;
+        let cur_node = cur_node.search(tokens, log_cluster_depth)?;
 
         Self::fast_match(cur_node, tokens, sim_th, include_params, token_template)
     }
@@ -394,15 +389,10 @@ pub struct SerializableDrain {
 
     pub clusters_counter: usize,
 
-    #[serde(skip)]
     token_prefix: String,
-    #[serde(skip)]
     token_suffix: String,
-    #[serde(skip)]
     token_template: String,
-    #[serde(skip)]
     token_template_counter: usize,
-    #[serde(skip)]
     token_template_check: String,
 }
 

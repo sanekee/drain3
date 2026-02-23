@@ -131,9 +131,8 @@ impl<'a> TemplateMiner<'a> {
         if let Some(handler) = &mut self.persistence_handler
             && let Some(state) = handler.load_state()?
         {
-            // Decompression logic would go here
-            // let loaded_drain: SerializableDrain = serde_json::from_slice(&state)?;
-            // self.drain = Drain::from(loaded_drain);
+            let ser_drain: SerializableDrain = serde_json::from_slice(&state)?;
+            self.drain = Drain::from(ser_drain);
         }
         Ok(())
     }

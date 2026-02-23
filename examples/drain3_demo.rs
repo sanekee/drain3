@@ -1,8 +1,10 @@
 use drain3::config::TemplateMinerConfig;
 
 use drain3::file_persistence::FilePersistence;
+use drain3::persistence::PersistenceHandler;
 use drain3::template_miner::TemplateMiner;
 use drain3::{LogCluster, UpdateType};
+
 use pprof::ProfilerGuard;
 use std::collections::HashMap;
 use std::fs::File;
@@ -11,10 +13,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::time::Instant;
 
+use crate::config::DemoConfig;
+
+mod config;
 mod sample_logs;
 
 struct SampleLine {
-    line: i32,
+    line: usize,
     content: String,
     update_type: UpdateType,
 }
@@ -34,13 +39,12 @@ type SampleLines = Vec<SampleLine>;
 fn main() -> anyhow::Result<()> {
     // Load config if exists
     // Load config from examples directory since we run from crate root
-    let state_file = "examples/outputs/drain3.states";
     let config_path = "examples/drain3.toml";
     let config = if Path::new(config_path).exists() {
-        TemplateMinerConfig::load(config_path).unwrap_or_default()
+        DemoConfig::load(config_path).unwrap_or_default()
     } else {
         eprintln!("Config file not found at {}, using defaults", config_path);
-        TemplateMinerConfig::default()
+        DemoConfig::default()
     };
 
     let log_file_name = sample_logs::get_sample_logs().unwrap_or_else(|e| {
@@ -48,16 +52,20 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     });
 
-    let persistence = FilePersistence::new(state_file.to_string());
-    let mut miner = TemplateMiner::new(&config, Some(Box::new(persistence)));
-    // let mut miner = TemplateMiner::new(&config, None);
+    let mut persistence: Option<Box<dyn PersistenceHandler>> = None;
+    if config.save_state {
+        let state_file = "examples/outputs/drain3.states";
+        persistence = Some(Box::new(FilePersistence::new(state_file.to_string())));
+    }
+
+    let mut miner = TemplateMiner::new(&config.miner_config, persistence);
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);
 
     let start = Instant::now();
     let mut batch_start = start;
-    let mut line_count = 0;
+    let mut line_count: usize = 0;
 
     let mut sample_lines: HashMap<usize, SampleLines> = HashMap::new();
 
@@ -66,20 +74,24 @@ fn main() -> anyhow::Result<()> {
     writeln!(output_file, "template_id,size,template,samples")?;
 
     println!("Processing {}...", &log_file_name);
-
-    let guard = pprof::ProfilerGuardBuilder::default()
-        .frequency(1000)
-        .blocklist(&[
-            "libc",
-            "libgcc",
-            "pthread",
-            "vdso",
-            "flamegraph",
-            "pprof",
-            "inferno",
-        ])
-        .build()
-        .unwrap();
+    let mut guard: Option<ProfilerGuard> = None;
+    if config.enable_profiler {
+        guard = Some(
+            pprof::ProfilerGuardBuilder::default()
+                .frequency(1000)
+                .blocklist(&[
+                    "libc",
+                    "libgcc",
+                    "pthread",
+                    "vdso",
+                    "flamegraph",
+                    "pprof",
+                    "inferno",
+                ])
+                .build()
+                .unwrap(),
+        );
+    }
 
     for line in reader.lines() {
         let line_num = line_count + 1;
@@ -112,8 +124,10 @@ fn main() -> anyhow::Result<()> {
         }
 
         line_count += 1;
-        if line_count % 10000 == 0 {
+        if config.max_lines > 0 && line_count >= config.max_lines {
             break;
+        }
+        if line_count % 10000 == 0 {
             let now = Instant::now();
             let batch_duration = now.duration_since(batch_start);
             let batch_lines_sec = 10000.0 / batch_duration.as_secs_f64();
@@ -125,12 +139,17 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if let Ok(report) = guard.report().build() {
-        let file = File::create("examples/outputs/flamegraph.svg").unwrap();
-        let mut options = pprof::flamegraph::Options::default();
-        options.image_width = Some(3000);
-        report.flamegraph_with_options(file, &mut options).unwrap();
-        // report.flamegraph(file).unwrap();
+    if config.enable_profiler
+        && let Some(g) = guard
+    {
+        if let Ok(report) = g.report().build() {
+            let path = "examples/outputs/flamegraph.svg";
+            let file = File::create(path).unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            options.image_width = Some(3000);
+            report.flamegraph_with_options(file, &mut options).unwrap();
+            println!("flamegraph saved to {}", path);
+        }
     }
 
     let duration = start.elapsed();
@@ -149,7 +168,10 @@ fn main() -> anyhow::Result<()> {
     let mut stdout = io::stdout().lock();
     miner
         .drain
-        .print_tree(&mut stdout, config.drain_max_clusters.unwrap_or_default())
+        .print_tree(
+            &mut stdout,
+            config.miner_config.drain_max_clusters.unwrap_or_default(),
+        )
         .unwrap();
 
     let mut clusters: Vec<LogCluster> = miner.drain.get_clusters();
