@@ -47,6 +47,12 @@ fn main() -> anyhow::Result<()> {
         DemoConfig::default()
     };
 
+    println!(
+        "staring drain3 demo config {}, mask_instructions {}",
+        config_path,
+        config.miner_config.masking_instructions.len()
+    );
+
     let log_file_name = sample_logs::get_sample_logs().unwrap_or_else(|e| {
         println!("failed to get sample logs {}", e);
         std::process::exit(1);

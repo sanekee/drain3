@@ -92,7 +92,8 @@ impl Drain {
             self.sim_th,
             true,
             self.log_cluster_depth,
-            &self.token_template,
+            &self.token_prefix,
+            &self.token_suffix,
         );
 
         match match_result {
@@ -108,7 +109,7 @@ impl Drain {
                 let cluster = cluster_ref.unwrap();
                 let update_type = cluster.lock().unwrap().update_template(
                     &content_tokens,
-                    |t| -> bool { Self::is_token(&self.token_template_check, t) },
+                    |t| -> bool { Self::is_token(&self.token_prefix, &self.token_suffix, t) },
                     || {
                         counter += 1;
                         format!(
@@ -150,7 +151,8 @@ impl Drain {
         sim_th: f64,
         include_params: bool,
         log_cluster_depth: usize,
-        token_template: &String,
+        token_prefix: &String,
+        token_suffix: &String,
     ) -> Option<usize> {
         let token_count = tokens.len();
 
@@ -163,7 +165,14 @@ impl Drain {
 
         let cur_node = cur_node.search(tokens, log_cluster_depth)?;
 
-        Self::fast_match(cur_node, tokens, sim_th, include_params, token_template)
+        Self::fast_match(
+            cur_node,
+            tokens,
+            sim_th,
+            include_params,
+            token_prefix,
+            token_suffix,
+        )
     }
 
     fn fast_match(
@@ -171,7 +180,8 @@ impl Drain {
         tokens: &[String],
         sim_th: f64,
         include_params: bool,
-        token_template: &String,
+        token_prefix: &String,
+        token_suffix: &String,
     ) -> Option<usize> {
         let mut max_sim = -1.0;
         let mut max_param_count = -1;
@@ -182,7 +192,8 @@ impl Drain {
             let (cur_sim, param_count) = Self::get_seq_distance(
                 &cluster.lock().unwrap().get_tokens(),
                 tokens,
-                token_template,
+                token_prefix,
+                token_suffix,
                 include_params,
             );
             if cur_sim > max_sim || (cur_sim == max_sim && param_count > max_param_count) {
@@ -204,14 +215,29 @@ impl Drain {
         tokens: &[String],
         sim_th: f64,
         include_params: bool,
-        token_template: &String,
+        token_prefix: &String,
+        token_suffix: &String,
     ) -> Option<usize> {
-        if let Some(id) = Self::fast_match(node, tokens, sim_th, include_params, token_template) {
+        if let Some(id) = Self::fast_match(
+            node,
+            tokens,
+            sim_th,
+            include_params,
+            token_prefix,
+            token_suffix,
+        ) {
             return Some(id);
         }
 
         for n in node.children() {
-            if let Some(id) = Self::full_match(n, tokens, sim_th, include_params, token_template) {
+            if let Some(id) = Self::full_match(
+                n,
+                tokens,
+                sim_th,
+                include_params,
+                token_prefix,
+                token_suffix,
+            ) {
                 return Some(id);
             }
         }
@@ -222,7 +248,8 @@ impl Drain {
     fn get_seq_distance(
         seq1: &[String],
         seq2: &[String],
-        token_template: &String,
+        token_prefix: &String,
+        token_suffix: &String,
         include_params: bool,
     ) -> (f64, i32) {
         if seq1.len() != seq2.len() {
@@ -237,7 +264,7 @@ impl Drain {
         let mut param_count = 0;
 
         for (token1, token2) in seq1.iter().zip(seq2.iter()) {
-            if Self::is_token(token_template, token1) {
+            if Self::is_token(token_prefix, token_suffix, token1) {
                 param_count += 1;
                 continue;
             }
@@ -254,8 +281,8 @@ impl Drain {
         (ret_val, param_count)
     }
 
-    fn is_token(template: &String, token: &String) -> bool {
-        token.starts_with(template)
+    fn is_token(token_prefix: &String, token_suffix: &String, token: &String) -> bool {
+        token.starts_with(token_prefix) && token.ends_with(token_suffix)
     }
 
     fn create_template(&mut self, seq1: &[String], seq2: &[String]) -> Vec<String> {
@@ -323,7 +350,8 @@ impl Drain {
                 &tokens,
                 required_sim_th,
                 true,
-                &self.token_template_check,
+                &self.token_prefix,
+                &self.token_suffix,
             )
             .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id))
         };
@@ -337,7 +365,8 @@ impl Drain {
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.token_template_check,
+                &self.token_prefix,
+                &self.token_suffix,
             )
             .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id)),
 
@@ -347,7 +376,8 @@ impl Drain {
                 required_sim_th,
                 true,
                 self.log_cluster_depth,
-                &self.token_template_check,
+                &self.token_prefix,
+                &self.token_suffix,
             )
             .and_then(|id| cluster::LogCluster::get_cluster_by_id(&id))
             .or_else(full_search),
