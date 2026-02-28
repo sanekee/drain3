@@ -107,11 +107,12 @@ fn main() -> anyhow::Result<()> {
             continue;
         }
 
-        let content = if let Some(idx) = line.find(": ") {
-            &line[idx + 2..]
-        } else {
-            line
-        };
+        // let content = if let Some(idx) = line.find(": ") {
+        //     &line[idx + 2..]
+        // } else {
+        //     line
+        // };
+        let content = line;
 
         let (cluster, update_type) = miner.add_log_message(content);
 
