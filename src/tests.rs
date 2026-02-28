@@ -5,7 +5,17 @@ mod tests {
 
     #[test]
     fn test_drain_parsing() {
-        let mut drain = Drain::new(4, 0.4, 100, None, vec![], true, "TOKEN", "<", ">");
+        let mut drain = Drain::new(&crate::drain::DrainConfig {
+            log_cluster_depth: 4,
+            sim_th: 0.4,
+            max_children: 100,
+            max_clusters: None,
+            extra_delimiters: vec![],
+            parametrize_numeric_tokens: true,
+            token_prefix: "<".to_string(),
+            token_suffix: ">".to_string(),
+            token_template: "TOKEN".to_string(),
+        });
 
         let log1 = "Connected to 10.0.0.1";
         let (cluster1, type1) = drain.add_log_message(log1);
@@ -35,7 +45,17 @@ mod tests {
 
     #[test]
     fn test_drain_max_children() {
-        let mut drain = Drain::new(4, 0.4, 2, None, vec![], true, "TOKEN", "<", ">");
+        let mut drain = Drain::new(&crate::drain::DrainConfig {
+            log_cluster_depth: 4,
+            sim_th: 0.4,
+            max_children: 2,
+            max_clusters: None,
+            extra_delimiters: vec![],
+            parametrize_numeric_tokens: true,
+            token_prefix: "<".to_string(),
+            token_suffix: ">".to_string(),
+            token_template: "TOKEN".to_string(),
+        });
         // Simulate filling up a node
         drain.add_log_message("A");
         drain.add_log_message("B");

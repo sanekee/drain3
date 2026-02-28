@@ -8,7 +8,7 @@ use crate::cluster::{LogCluster, Node, SearchStrategy, UpdateType};
 use profiling::function;
 
 #[derive(Debug)]
-pub struct Drain {
+pub struct DrainConfig {
     pub log_cluster_depth: usize,
     pub sim_th: f64,
     pub max_children: usize,
@@ -16,59 +16,55 @@ pub struct Drain {
     pub extra_delimiters: Vec<String>,
     pub parametrize_numeric_tokens: bool,
 
-    pub root_node: Node,
-    pub clusters_counter: usize,
+    pub token_prefix: String,
+    pub token_suffix: String,
+    pub token_template: String,
+}
+#[derive(Debug)]
+pub struct Drain {
+    root_node: Node,
+    log_cluster_depth: usize,
+    sim_th: f64,
+    max_children: usize,
+    max_clusters: Option<usize>,
+    extra_delimiters: Vec<String>,
+    parametrize_numeric_tokens: bool,
+
+    clusters_counter: usize,
 
     token_prefix: String,
     token_suffix: String,
     token_template: String,
     token_template_counter: usize,
-    token_template_check: String,
 }
 
 impl Drain {
-    pub fn new(
-        depth: usize,
-        sim_th: f64,
-        max_children: usize,
-        max_clusters: Option<usize>,
-        extra_delimiters: Vec<String>,
-        parametrize_numeric_tokens: bool,
-        token_template: &str,
-        token_prefix: &str,
-        token_suffix: &str,
-    ) -> Self {
-        if depth < 3 {
+    pub fn new(cfg: &DrainConfig) -> Self {
+        if cfg.log_cluster_depth < 3 {
             panic!("depth argument must be at least 3");
         }
 
-        let token_template = token_template
-            .is_empty()
-            .then(|| "TOKEN")
-            .unwrap_or(token_template);
-
-        let token_template_check = format!("{}{}", token_prefix, token_template);
+        let token_template = if cfg.token_template.is_empty() {
+            "TOKEN"
+        } else {
+            cfg.token_template.as_str()
+        };
 
         Self {
-            log_cluster_depth: depth,
-            sim_th,
-            max_children,
-            max_clusters,
-            extra_delimiters,
-            parametrize_numeric_tokens,
             root_node: Node::new(),
             clusters_counter: 0,
-            token_template: token_template.to_string(),
             token_template_counter: 0,
-            token_prefix: token_prefix.to_string(),
-            token_suffix: token_suffix.to_string(),
-            token_template_check: token_template_check,
-        }
-    }
 
-    // Helper to check if string has numbers
-    fn has_numbers(s: &str) -> bool {
-        s.chars().any(|c| c.is_ascii_digit())
+            log_cluster_depth: cfg.log_cluster_depth,
+            sim_th: cfg.sim_th,
+            max_children: cfg.max_children,
+            max_clusters: cfg.max_clusters,
+            extra_delimiters: cfg.extra_delimiters.clone(),
+            parametrize_numeric_tokens: cfg.parametrize_numeric_tokens,
+            token_template: token_template.to_string(),
+            token_prefix: cfg.token_prefix.to_string(),
+            token_suffix: cfg.token_suffix.to_string(),
+        }
     }
 
     pub fn get_content_as_tokens(&self, content: &str) -> Vec<String> {
@@ -281,29 +277,8 @@ impl Drain {
         (ret_val, param_count)
     }
 
-    fn is_token(token_prefix: &String, token_suffix: &String, token: &String) -> bool {
+    fn is_token(token_prefix: &String, token_suffix: &String, token: &str) -> bool {
         token.starts_with(token_prefix) && token.ends_with(token_suffix)
-    }
-
-    fn create_template(&mut self, seq1: &[String], seq2: &[String]) -> Vec<String> {
-        seq1.iter()
-            .zip(seq2.iter())
-            .map(|(t1, t2)| {
-                if t1 == t2 {
-                    t2.clone()
-                } else {
-                    self.get_next_token()
-                }
-            })
-            .collect()
-    }
-
-    fn get_next_token(&mut self) -> String {
-        self.token_template_counter += 1;
-        format!(
-            "{}{}{}{}",
-            self.token_prefix, self.token_template, self.token_template_counter, self.token_suffix
-        )
     }
 
     fn add_seq_to_prefix_tree(
@@ -319,7 +294,7 @@ impl Drain {
 
         let first_layer_node = root_node.get_or_insert_child(&token_count_str);
 
-        let mut cur_node = first_layer_node;
+        let cur_node = first_layer_node;
 
         cur_node.add_cluster(
             cluster_id,
@@ -410,20 +385,20 @@ impl Drain {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SerializableDrain {
     root_node: SerializableNode,
-    pub log_cluster_depth: usize,
-    pub sim_th: f64,
-    pub max_children: usize,
-    pub max_clusters: Option<usize>,
-    pub extra_delimiters: Vec<String>,
-    pub parametrize_numeric_tokens: bool,
+    log_cluster_depth: usize,
+    sim_th: f64,
+    max_children: usize,
+    max_clusters: Option<usize>,
+    extra_delimiters: Vec<String>,
+    parametrize_numeric_tokens: bool,
 
-    pub clusters_counter: usize,
+    clusters_counter: usize,
+
+    token_template_counter: usize,
 
     token_prefix: String,
     token_suffix: String,
     token_template: String,
-    token_template_counter: usize,
-    token_template_check: String,
 }
 
 impl From<&Drain> for SerializableDrain {
@@ -442,7 +417,6 @@ impl From<&Drain> for SerializableDrain {
             token_suffix: drain.token_suffix.clone(),
             token_template: drain.token_template.clone(),
             token_template_counter: drain.token_template_counter,
-            token_template_check: drain.token_template_check.clone(),
         }
     }
 }
@@ -463,7 +437,6 @@ impl From<SerializableDrain> for Drain {
             token_suffix: s.token_suffix.clone(),
             token_template: s.token_template.clone(),
             token_template_counter: s.token_template_counter,
-            token_template_check: s.token_template_check.clone(),
         }
     }
 }

@@ -1,7 +1,6 @@
 use drain3::config::TemplateMinerConfig;
 
 use drain3::LogCluster;
-use drain3::SearchStrategy;
 use drain3::file_persistence::FilePersistence;
 use drain3::template_miner::TemplateMiner;
 use std::fs::File;
@@ -34,7 +33,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     let persistence = FilePersistence::new(state_file.to_string());
-    let mut miner = TemplateMiner::new(&config, Some(Box::new(persistence)));
+    let miner = TemplateMiner::new(&config, Some(Box::new(persistence)));
 
     let file = File::open(&log_file_name)?;
     let reader = BufReader::new(file);
@@ -55,19 +54,6 @@ fn main() -> anyhow::Result<()> {
         if line.is_empty() {
             continue;
         }
-
-        let content = if let Some(idx) = line.find(": ") {
-            &line[idx + 2..]
-        } else {
-            line
-        };
-
-        let log_cluster = miner
-            .match_cluster(content, SearchStrategy::Fallback)
-            .or_else(|| {
-                println!("failed to match line {}: {}", line_count + 1, &content);
-                None
-            });
 
         line_count += 1;
         if line_count % 10000 == 0 {

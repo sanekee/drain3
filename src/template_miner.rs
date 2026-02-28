@@ -1,6 +1,6 @@
 use crate::cluster::{LogCluster, SearchStrategy, UpdateType};
 use crate::config::TemplateMinerConfig;
-use crate::drain::{Drain, SerializableDrain};
+use crate::drain::{Drain, DrainConfig, SerializableDrain};
 use crate::masking::{AbstractMaskingInstruction, LogMasker, MaskingInstruction};
 use crate::persistence::PersistenceHandler;
 use anyhow::Result;
@@ -36,17 +36,17 @@ impl<'a> TemplateMiner<'a> {
         config: &'a TemplateMinerConfig,
         persistence_handler: Option<Box<dyn PersistenceHandler>>,
     ) -> Self {
-        let drain = Drain::new(
-            config.drain_depth,
-            config.drain_sim_th,
-            config.drain_max_children,
-            config.drain_max_clusters,
-            config.drain_extra_delimiters.clone(),
-            config.parametrize_numeric_tokens,
-            &config.token_template,
-            &config.mask_prefix,
-            &config.mask_suffix,
-        );
+        let drain = Drain::new(&DrainConfig {
+            log_cluster_depth: config.drain_depth,
+            sim_th: config.drain_sim_th,
+            max_children: config.drain_max_children,
+            max_clusters: config.drain_max_clusters,
+            extra_delimiters: config.drain_extra_delimiters.clone(),
+            parametrize_numeric_tokens: config.parametrize_numeric_tokens,
+            token_prefix: config.mask_prefix.clone(),
+            token_suffix: config.mask_suffix.clone(),
+            token_template: config.token_template.clone(),
+        });
 
         let masking_instructions = config
             .masking_instructions
@@ -198,11 +198,11 @@ impl<'a> TemplateMiner<'a> {
             if exact_matching {
                 let instructions = self.masker.instructions_by_mask_name(mask_name);
 
+                let unnamed_backref =
+                    Regex::new(r"\\[1-9]\d?").expect("failed to compile unnamed backref regex");
+
                 for mi in instructions {
                     let mut pattern = mi.pattern().to_string();
-
-                    let unnamed_backref =
-                        Regex::new(r"\\[1-9]\d?").expect("failed to compile unnamed backref regex");
 
                     pattern = unnamed_backref.replace_all(&pattern, "(?:.+?)").to_string();
 

@@ -1,5 +1,3 @@
-use drain3::config::TemplateMinerConfig;
-
 use drain3::file_persistence::FilePersistence;
 use drain3::persistence::PersistenceHandler;
 use drain3::template_miner::TemplateMiner;
@@ -209,7 +207,9 @@ fn main() -> anyhow::Result<()> {
         )?;
     }
 
-    miner.save_state();
+    if let Err(res) = miner.save_state() {
+        println!("failed to save state  {}", res)
+    }
 
     Ok(())
 }

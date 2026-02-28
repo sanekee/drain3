@@ -29,9 +29,9 @@ pub struct LogCluster {
 }
 
 impl LogCluster {
-    pub fn new(tokens: &Vec<String>, cluster_id: usize) -> Self {
+    pub fn new(tokens: &[String], cluster_id: usize) -> Self {
         Self {
-            tokens: tokens.clone(),
+            tokens: tokens.to_owned(),
             cluster_id,
             size: 1,
         }
@@ -59,7 +59,6 @@ impl LogCluster {
         F1: FnMut(&String) -> bool,
         F2: FnMut() -> String,
     {
-        let mut updated = false;
         let new_tokens = tokens
             .iter()
             .zip(self.tokens.iter())
@@ -82,7 +81,7 @@ impl LogCluster {
     }
 
     pub fn get_cluster_by_id(id: &usize) -> Option<Arc<Mutex<LogCluster>>> {
-        CLUSTER_MAP.lock().unwrap().get(&id).cloned()
+        CLUSTER_MAP.lock().unwrap().get(id).cloned()
     }
 
     pub fn get_clusters() -> Vec<LogCluster> {
@@ -134,19 +133,11 @@ impl Node {
         self.children.get(token).map(Box::as_ref)
     }
 
-    pub fn get_wildcard_child(&self) -> Option<&Node> {
-        self.wildcard_child.as_ref().map(|b| b.as_ref())
-    }
-
     pub fn find_next(&self, token: &String) -> Option<&Node> {
         self.children
             .get(token)
             .map(Box::as_ref)
             .or_else(|| self.wildcard_child.as_ref().map(Box::as_ref))
-    }
-
-    pub fn first_cluster(&self) -> Option<Arc<Mutex<LogCluster>>> {
-        self.clusters.first().cloned()
     }
 
     pub fn has_child(&self, token: &str) -> bool {
@@ -250,8 +241,6 @@ impl Node {
                     }
                 } else if cur_node.child_count() + 1 < max_children {
                     cur_node = cur_node.get_or_insert_child(token);
-                } else if cur_node.child_count() + 1 == max_children {
-                    cur_node = cur_node.get_or_insert_wildcard();
                 } else {
                     cur_node = cur_node.get_or_insert_wildcard();
                 }
