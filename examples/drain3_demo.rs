@@ -165,9 +165,13 @@ fn main() -> anyhow::Result<()> {
         0.0
     };
 
+    let clusters = LogCluster::get_clusters();
     println!(
-        "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec",
-        duration, line_count, lines_per_sec,
+        "--- Done processing file in {:.2?} sec. Total of {} lines, rate {:.1} lines/sec, num clusters {}",
+        duration,
+        line_count,
+        lines_per_sec,
+        clusters.len()
     );
 
     println!("Prefix tree:");
@@ -180,8 +184,8 @@ fn main() -> anyhow::Result<()> {
         )
         .unwrap();
 
-    let mut clusters: Vec<LogCluster> = miner.drain.get_clusters();
-    clusters.sort_by_key(|c| c.cluster_id);
+    // let mut clusters: Vec<LogCluster> = miner.drain.get_clusters();
+    // clusters.sort_by_key(|c| c.cluster_id);
 
     for cluster in clusters {
         let samples = sample_lines.get(&cluster.cluster_id);

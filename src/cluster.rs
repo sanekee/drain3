@@ -84,6 +84,16 @@ impl LogCluster {
     pub fn get_cluster_by_id(id: &usize) -> Option<Arc<Mutex<LogCluster>>> {
         CLUSTER_MAP.lock().unwrap().get(&id).cloned()
     }
+
+    pub fn get_clusters() -> Vec<LogCluster> {
+        let mut clusters: Vec<LogCluster> = Vec::new();
+        CLUSTER_MAP.lock().unwrap().iter().for_each(|it| {
+            clusters.push(it.1.lock().unwrap().clone());
+        });
+
+        clusters.sort_by_key(|it| it.cluster_id);
+        clusters
+    }
 }
 
 impl std::fmt::Display for LogCluster {
