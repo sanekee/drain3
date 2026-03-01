@@ -16,21 +16,29 @@ drain_max_children = 100
 drain_max_clusters = 1024
 drain_extra_delimiters = ["_"]
 
+# [[miner_config.masking_instructions]]
+# regex_pattern = "((Jan|Feb|Mac|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2})"
+# mask_with = "DATETIME"
+
 [[miner_config.masking_instructions]]
-regex_pattern = "((Jan|Feb|Mac|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2})"
-mask_with = "DATETIME"
+regex_pattern = "(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})"
+mask_with = "TIME"
+
+[[miner_config.masking_instructions]]
+regex_pattern = "(\\[(DEBUG|ERROR|INFO|NOTICE|WARN)\\])"
+mask_with = "LEVEL"
 
 [[miner_config.masking_instructions]]
 regex_pattern = "(?:[0-9a-f]{2,}:){3,}[0-9a-f]{2,}"
 mask_with = "ID"
 
 [[miner_config.masking_instructions]]
-regex_pattern = "(\\d{1,3}(\\.\\d{1,3}){3})"
-mask_with = "IP"
+regex_pattern = "(\\d{1,3}(\\.\\d{1,3}){3}:\\d{1,5})"
+mask_with = "IPPORT"
 
 [[miner_config.masking_instructions]]
-regex_pattern = "([A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+)"
-mask_with = "HOST"
+regex_pattern = "(\\d{1,3}(\\.\\d{1,3}){3})"
+mask_with = "IP"
 
 # [[miner_config.masking_instructions]]
 # regex_pattern ="(([0-9a-f]{6,} ?){2,}([0-9a-f]{6,}))"
@@ -48,6 +56,10 @@ mask_with = "HEX"
 regex_pattern = "([-+]?\\d+)"
 mask_with = "NUM"
 
+[[miner_config.masking_instructions]]
+regex_pattern = "([-+]?\\d+)\\.(\\d+)"
+mask_with = "NUM"
+
 # [[miner_config.masking_instructions]]
 # regex_pattern = "(executed cmd )(\".+?\")"
 # mask_with = "CMD"
@@ -59,3 +71,7 @@ mask_with = "STR"
 [[miner_config.masking_instructions]]
 regex_pattern = "\"[^\"]*\""
 mask_with = "STR"
+
+[[miner_config.masking_instructions]]
+regex_pattern = "([A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+)"
+mask_with = "HOST"

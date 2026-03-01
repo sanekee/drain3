@@ -51,10 +51,27 @@ fn main() -> anyhow::Result<()> {
         config.miner_config.masking_instructions.len()
     );
 
-    let log_file_name = sample_logs::get_sample_logs().unwrap_or_else(|e| {
-        println!("failed to get sample logs {}", e);
-        std::process::exit(1);
-    });
+    let args: Vec<String> = std::env::args().collect();
+    let log_file_name = if args.len() > 1 {
+        let arg = &args[1];
+        if arg == "--help" || arg == "-h" {
+            println!("Usage: drain3_demo [LOG_FILE]");
+            println!();
+            println!("If LOG_FILE is provided, it will be used as input.");
+            println!("If omitted, a sample SSH log will be downloaded and used.");
+            std::process::exit(0);
+        }
+        if !Path::new(arg).exists() {
+            eprintln!("Error: file not found: {}", arg);
+            std::process::exit(1);
+        }
+        arg.clone()
+    } else {
+        sample_logs::get_sample_logs().unwrap_or_else(|e| {
+            println!("failed to get sample logs {}", e);
+            std::process::exit(1);
+        })
+    };
 
     let mut persistence: Option<Box<dyn PersistenceHandler>> = None;
     if config.save_state {
